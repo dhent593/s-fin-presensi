@@ -55,9 +55,9 @@ export default function AdminPage() {
   // Stats State
   const [stats, setStats] = useState({
     totalEmployees: 0,
-    alreadyCheckedIn: 0,
-    lateToday: 0,
-    notCheckedIn: 0
+    checkedIn: 0,
+    late: 0,
+    absent: 0
   });
 
   // Data lists
