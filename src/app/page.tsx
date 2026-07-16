@@ -482,8 +482,8 @@ export default function Home() {
 
         <div className="max-w-md w-full bg-white/95 backdrop-blur-2xl rounded-[2.5rem] shadow-xl shadow-orange-500/5 border border-white p-8 sm:p-10 relative z-10 animate-slide-up text-slate-800">
           <div className="text-center mb-8">
-            <div className="inline-flex bg-orange-100 text-orange-600 px-5 py-3 rounded-3xl font-black text-3xl mb-4 shadow-md shadow-orange-500/5 animate-bounce">
-              GO
+            <div className="inline-flex mb-4">
+              <img src="/favicon.png" alt="Great Attendance Logo" className="w-16 h-16 rounded-2xl shadow-md shadow-orange-500/10" />
             </div>
             <h1 className="text-3xl font-black tracking-tight text-gray-900">Great Attendance</h1>
             <p className="text-sm font-semibold text-gray-400 mt-1">Sistem Absensi Karyawan Terintegrasi</p>
