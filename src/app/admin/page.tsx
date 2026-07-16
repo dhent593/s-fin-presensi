@@ -223,7 +223,7 @@ export default function AdminPage() {
         .lte('check_in', end)
         .order('check_in', { ascending: false });
 
-      const todayLogs = (logsData || []) as AttendanceLog[];
+      const todayLogs = (logsData || []) as unknown as AttendanceLog[];
       setLogs(todayLogs);
 
       // 4. Calculate Stats
@@ -255,13 +255,13 @@ export default function AdminPage() {
 
       const { data, error } = await supabase
         .from('attendance_logs')
-        .select('id, user_id, check_in, check_out, status, latitude, longitude, break_start, break_end, profiles(nik, full_name)')
+        .select('*, profiles(nik, full_name)')
         .gte('check_in', start)
         .lte('check_in', end)
         .order('check_in', { ascending: true });
 
       if (error) throw error;
-      setRecapLogs((data || []) as AttendanceLog[]);
+      setRecapLogs((data || []) as unknown as AttendanceLog[]);
     } catch (err) {
       console.error('Error loading monthly recap:', err);
     } finally {
