@@ -17,6 +17,8 @@ interface AttendanceLog {
   check_in: string;
   check_out: string | null;
   status: string;
+  break_start?: string | null;
+  break_end?: string | null;
 }
 
 export default function Home() {
@@ -46,13 +48,20 @@ export default function Home() {
   // Attendance logging feedback
   const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [attendanceConfirm, setAttendanceConfirm] = useState<{ type: 'Masuk' | 'Pulang' } | null>(null);
+  const [attendanceConfirm, setAttendanceConfirm] = useState<{ type: 'Masuk' | 'Pulang' | 'IstirahatMulai' | 'IstirahatSelesai' } | null>(null);
+  const [breakActionLoading, setBreakActionLoading] = useState(false);
 
   // History logs
   const [history, setHistory] = useState<AttendanceLog[]>([]);
+  const [todayLog, setTodayLog] = useState<AttendanceLog | null>(null);
 
-  // Office settings (for lateness calculation)
-  const [officeSettings, setOfficeSettings] = useState<{ work_start_time: string; saturday_work_start_time: string } | null>(null);
+  // Office settings (for lateness + break time calculation)
+  const [officeSettings, setOfficeSettings] = useState<{
+    work_start_time: string;
+    saturday_work_start_time: string;
+    break_start_time: string;
+    break_end_time: string;
+  } | null>(null);
 
   // Logout confirmation modal state
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -226,13 +235,28 @@ export default function Home() {
     try {
       const { data, error } = await supabase
         .from('attendance_logs')
-        .select('*')
+        .select('id, check_in, check_out, status, break_start, break_end')
         .eq('user_id', user.id)
         .order('check_in', { ascending: false })
         .limit(7);
 
       if (error) throw error;
-      setHistory((data || []) as AttendanceLog[]);
+      const logs = (data || []) as AttendanceLog[];
+      setHistory(logs);
+
+      // Cek apakah log pertama adalah hari ini (WIB)
+      if (logs.length > 0) {
+        const firstLog = logs[0];
+        const logDate = new Date(new Date(firstLog.check_in).toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+        const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+        const isToday =
+          logDate.getFullYear() === today.getFullYear() &&
+          logDate.getMonth() === today.getMonth() &&
+          logDate.getDate() === today.getDate();
+        setTodayLog(isToday ? firstLog : null);
+      } else {
+        setTodayLog(null);
+      }
     } catch (err) {
       console.error('Error fetching history:', err);
     }
@@ -242,7 +266,7 @@ export default function Home() {
     try {
       const { data, error } = await supabase
         .from('geofence_settings')
-        .select('work_start_time, saturday_work_start_time')
+        .select('work_start_time, saturday_work_start_time, break_start_time, break_end_time')
         .eq('id', 1)
         .single();
       if (!error && data) {
@@ -345,6 +369,35 @@ export default function Home() {
 
     saveSupabaseConfig(dbUrl.trim(), dbAnonKey.trim());
     window.location.reload();
+  };
+
+  // Handler absen istirahat
+  const handleBreak = async (type: 'Mulai' | 'Selesai') => {
+    if (!user || !todayLog) return;
+    setBreakActionLoading(true);
+    setFeedback(null);
+
+    const field = type === 'Mulai' ? 'break_start' : 'break_end';
+    try {
+      const { error } = await supabase
+        .from('attendance_logs')
+        .update({ [field]: new Date().toISOString() })
+        .eq('id', todayLog.id);
+
+      if (error) throw error;
+
+      setFeedback({
+        success: true,
+        message: type === 'Mulai'
+          ? 'Istirahat dimulai. Selamat beristirahat! 🌙'
+          : 'Istirahat selesai. Semangat bekerja kembali! ☀️',
+      });
+      fetchAttendanceHistory();
+    } catch (err: any) {
+      setFeedback({ success: false, message: `Gagal: ${err.message}` });
+    } finally {
+      setBreakActionLoading(false);
+    }
   };
 
   // Clock-in / Clock-out handler
@@ -581,7 +634,7 @@ export default function Home() {
             {/* Tombol Masuk */}
             <button 
               onClick={() => setAttendanceConfirm({ type: 'Masuk' })}
-              disabled={actionLoading}
+              disabled={actionLoading || breakActionLoading}
               className="hover-lift flex flex-col items-center justify-center bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:scale-95 disabled:opacity-50 disabled:scale-100 text-white rounded-3xl p-6 transition-all duration-300 shadow-lg shadow-orange-500/20 cursor-pointer"
             >
               <div className="bg-white/20 p-3 rounded-2xl mb-3 shadow-inner">
@@ -595,7 +648,7 @@ export default function Home() {
             {/* Tombol Keluar */}
             <button 
               onClick={() => setAttendanceConfirm({ type: 'Pulang' })}
-              disabled={actionLoading}
+              disabled={actionLoading || breakActionLoading}
               className="hover-lift flex flex-col items-center justify-center bg-gradient-to-br from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 active:scale-95 disabled:opacity-50 disabled:scale-100 text-white rounded-3xl p-6 transition-all duration-300 shadow-lg shadow-slate-700/20 cursor-pointer"
             >
               <div className="bg-white/20 p-3 rounded-2xl mb-3 shadow-inner">
@@ -606,6 +659,49 @@ export default function Home() {
               <span className="text-md font-black tracking-wide">ABSEN PULANG</span>
             </button>
           </div>
+
+          {/* Tombol Istirahat — muncul hanya di jam istirahat */}
+          {(() => {
+            if (!officeSettings?.break_start_time || !officeSettings?.break_end_time) return null;
+            const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+            const cur = now.getHours() * 60 + now.getMinutes();
+            const [bsH, bsM] = officeSettings.break_start_time.split(':').map(Number);
+            const [beH, beM] = officeSettings.break_end_time.split(':').map(Number);
+            const isBreakTime = cur >= bsH * 60 + bsM && cur < beH * 60 + beM;
+            if (!isBreakTime || !todayLog) return null;
+            const hasBreakEnd = !!todayLog.break_end;
+            if (hasBreakEnd) return null;
+            const isResting = !!todayLog.break_start;
+            return (
+              <button
+                onClick={() => setAttendanceConfirm({ type: isResting ? 'IstirahatSelesai' : 'IstirahatMulai' })}
+                disabled={actionLoading || breakActionLoading}
+                className={`hover-lift mt-4 w-full flex flex-col items-center justify-center active:scale-95 disabled:opacity-50 disabled:scale-100 text-white rounded-3xl p-5 transition-all duration-300 shadow-lg cursor-pointer ${
+                  isResting
+                    ? 'bg-gradient-to-br from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 shadow-teal-500/20'
+                    : 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-blue-500/20'
+                }`}
+              >
+                <div className="bg-white/20 p-3 rounded-2xl mb-2 shadow-inner">
+                  {isResting ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-7 h-7">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-7 h-7">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-md font-black tracking-wide">
+                  {isResting ? '☀️ SELESAI ISTIRAHAT' : '🌙 MULAI ISTIRAHAT'}
+                </span>
+                <span className="text-[10px] opacity-75 mt-0.5">
+                  {isResting ? `Mulai: ${new Date(todayLog.break_start!).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')} WIB` : `${officeSettings.break_start_time} – ${officeSettings.break_end_time} WIB`}
+                </span>
+              </button>
+            );
+          })()}
 
           {/* Indikator Status Lokasi Geofencing */}
           <div className="mt-5">
@@ -710,8 +806,14 @@ export default function Home() {
                       </p>
                     </div>
                     <div className="text-right text-xs font-bold text-slate-400 space-y-1">
-                      <p>Masuk: <span className="text-slate-700 font-extrabold">{timeIn}</span></p>
-                      <p>Pulang: <span className="text-slate-700 font-extrabold">{timeOut}</span></p>
+                       <p>Masuk: <span className="text-slate-700 font-extrabold">{timeIn}</span></p>
+                       <p>Pulang: <span className="text-slate-700 font-extrabold">{timeOut}</span></p>
+                       {log.break_start && (
+                         <p className="text-blue-500">Istirahat: <span className="font-extrabold">
+                           {new Date(log.break_start).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')}
+                           {log.break_end ? ` – ${new Date(log.break_end).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')}` : ' (blm selesai)'}
+                         </span></p>
+                       )}
                     </div>
                   </div>
                 );
@@ -768,9 +870,12 @@ export default function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
               </svg>
             </div>
-            <h3 className="text-lg font-black text-slate-900 mb-2">Konfirmasi Lokasi</h3>
+            <h3 className="text-lg font-black text-slate-900 mb-2">Konfirmasi Absensi</h3>
             <p className="text-xs font-bold text-slate-500 mb-6 leading-relaxed">
-              Apakah Anda yakin sudah ada di area pabrik untuk melakukan <span className="text-orange-500">Absen {attendanceConfirm.type}</span>?
+              {attendanceConfirm.type === 'IstirahatMulai' && 'Anda akan mencatat waktu mulai istirahat sekarang.'}
+              {attendanceConfirm.type === 'IstirahatSelesai' && 'Anda akan mencatat waktu selesai istirahat sekarang.'}
+              {(attendanceConfirm.type === 'Masuk' || attendanceConfirm.type === 'Pulang') &&
+                <>Apakah Anda yakin sudah ada di area pabrik untuk melakukan <span className="text-orange-500">Absen {attendanceConfirm.type}</span>?</>}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <button 
@@ -785,11 +890,21 @@ export default function Home() {
                 onClick={async () => {
                   const type = attendanceConfirm.type;
                   setAttendanceConfirm(null);
-                  await triggerAttendance(type);
+                  if (type === 'IstirahatMulai') {
+                    await handleBreak('Mulai');
+                  } else if (type === 'IstirahatSelesai') {
+                    await handleBreak('Selesai');
+                  } else {
+                    await triggerAttendance(type as 'Masuk' | 'Pulang');
+                  }
                 }}
-                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-2xl transition active:scale-95 cursor-pointer shadow-lg shadow-orange-500/25 text-xs"
+                className={`w-full text-white font-bold py-3 rounded-2xl transition active:scale-95 cursor-pointer shadow-lg text-xs ${
+                  attendanceConfirm.type === 'IstirahatMulai' ? 'bg-blue-500 hover:bg-blue-600 shadow-blue-500/25' :
+                  attendanceConfirm.type === 'IstirahatSelesai' ? 'bg-teal-500 hover:bg-teal-600 shadow-teal-500/25' :
+                  'bg-orange-500 hover:bg-orange-600 shadow-orange-500/25'
+                }`}
               >
-                Ya, Yakin
+                Ya, Catat
               </button>
             </div>
           </div>

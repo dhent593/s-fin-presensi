@@ -22,6 +22,8 @@ interface AttendanceLog {
   status: string;
   latitude: number;
   longitude: number;
+  break_start?: string | null;
+  break_end?: string | null;
   profiles: {
     nik: string;
     full_name: string;
@@ -105,6 +107,8 @@ export default function AdminPage() {
   const [recapYear, setRecapYear] = useState<number>(new Date().getFullYear());
   const [recapLogs, setRecapLogs] = useState<AttendanceLog[]>([]);
   const [recapLoading, setRecapLoading] = useState<boolean>(false);
+  const [showResetRecapModal, setShowResetRecapModal] = useState(false);
+  const [resetRecapLoading, setResetRecapLoading] = useState(false);
 
   // Manual Attendance Correction states
   const [editingCell, setEditingCell] = useState<{
@@ -251,7 +255,7 @@ export default function AdminPage() {
 
       const { data, error } = await supabase
         .from('attendance_logs')
-        .select('*, profiles(nik, full_name)')
+        .select('id, user_id, check_in, check_out, status, latitude, longitude, break_start, break_end, profiles(nik, full_name)')
         .gte('check_in', start)
         .lte('check_in', end)
         .order('check_in', { ascending: true });
@@ -857,6 +861,31 @@ export default function AdminPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Reset / hapus semua log absensi pada bulan & tahun yang dipilih
+  const handleResetMonthlyRecap = async () => {
+    setResetRecapLoading(true);
+    try {
+      const start = new Date(recapYear, recapMonth, 1).toISOString();
+      const end = new Date(recapYear, recapMonth + 1, 0, 23, 59, 59, 999).toISOString();
+
+      const { error } = await supabase
+        .from('attendance_logs')
+        .delete()
+        .gte('check_in', start)
+        .lte('check_in', end);
+
+      if (error) throw error;
+
+      await loadMonthlyRecap(recapMonth, recapYear);
+      setShowResetRecapModal(false);
+    } catch (err: any) {
+      console.error('Error resetting recap:', err);
+      alert('Gagal mereset data: ' + err.message);
+    } finally {
+      setResetRecapLoading(false);
+    }
   };
 
   // Helper to filter and sort employee list dynamically
@@ -1485,6 +1514,16 @@ export default function AdminPage() {
                     </svg>
                     Ekspor (.CSV)
                   </button>
+
+                  <button
+                    onClick={() => setShowResetRecapModal(true)}
+                    className="hover-lift bg-red-500 hover:bg-red-600 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md cursor-pointer flex items-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                    Reset Bulan Ini
+                  </button>
                 </div>
               </div>
 
@@ -1632,7 +1671,14 @@ export default function AdminPage() {
                                           ][recapMonth]}</p>
                                           <p>Masuk: <span className="text-white">{new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')} WIB</span> ({log.status})</p>
                                           <p>Pulang: <span className="text-white">{log.check_out ? new Date(log.check_out).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':') + ' WIB' : '--:--'}</span></p>
-                                          <p>Istirahat: <span className="text-white">{geofence.break_start_time} - {geofence.break_end_time} WIB</span></p>
+                                          {log.break_start ? (
+                                            <p>Istirahat: <span className="text-blue-300">
+                                              {new Date(log.break_start).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')}
+                                              {log.break_end ? ` – ${new Date(log.break_end).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')} WIB` : ' WIB (blm selesai)'}
+                                            </span></p>
+                                          ) : (
+                                            <p>Istirahat: <span className="text-slate-400">Tidak dicatat</span></p>
+                                          )}
                                           <p className="text-[9px] text-slate-400">GPS: {Number(log.latitude).toFixed(5)}, {Number(log.longitude).toFixed(5)}</p>
                                           <p className="text-[8px] text-orange-300 mt-1">💡 Klik untuk koreksi absensi</p>
                                         </div>
@@ -1996,6 +2042,48 @@ export default function AdminPage() {
                 className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer shadow-lg shadow-red-500/25"
               >
                 Ya, Reset Semua
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM RESET MONTHLY RECAP MODAL */}
+      {showResetRecapModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl text-center animate-scale-up">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-8 h-8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-black text-slate-900 mb-1">Reset Data Absensi?</h3>
+            <p className="text-xs font-bold text-orange-500 mb-3">
+              {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][recapMonth]} {recapYear}
+            </p>
+            <p className="text-sm font-semibold text-slate-500 mb-6 leading-relaxed">
+              Tindakan ini akan <strong className="text-red-600">MENGHAPUS SEMUA DATA ABSENSI</strong> pada bulan tersebut secara permanen. Pastikan Anda sudah <strong className="text-slate-700">backup ke Excel</strong> sebelum melanjutkan.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setShowResetRecapModal(false)}
+                disabled={resetRecapLoading}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleResetMonthlyRecap}
+                disabled={resetRecapLoading}
+                className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer shadow-lg shadow-red-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {resetRecapLoading ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Menghapus...</>
+                ) : (
+                  'Ya, Hapus Data'
+                )}
               </button>
             </div>
           </div>
