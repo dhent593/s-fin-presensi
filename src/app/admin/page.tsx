@@ -909,7 +909,7 @@ export default function AdminPage() {
           <div className="p-6 flex items-center gap-3 border-b border-slate-100">
             <div className="bg-orange-500 text-white px-2.5 py-1.5 rounded-xl font-black text-xl shadow-md shadow-orange-500/10">GO</div>
             <div>
-              <h1 className="font-black tracking-wide leading-tight text-sm text-slate-900">GreatOrange</h1>
+              <h1 className="font-black tracking-wide leading-tight text-sm text-slate-900">Great Attendance</h1>
               <p className="text-[9px] text-slate-400 uppercase tracking-widest font-extrabold">Admin Panel</p>
             </div>
           </div>

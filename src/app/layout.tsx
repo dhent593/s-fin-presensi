@@ -13,8 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Presensi Pabrik - GreatOrange",
+  title: "Great Attendance",
   description: "Sistem Presensi Karyawan Terintegrasi Geofencing",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({

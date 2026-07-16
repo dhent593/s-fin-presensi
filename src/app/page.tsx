@@ -485,7 +485,7 @@ export default function Home() {
             <div className="inline-flex bg-orange-100 text-orange-600 px-5 py-3 rounded-3xl font-black text-3xl mb-4 shadow-md shadow-orange-500/5 animate-bounce">
               GO
             </div>
-            <h1 className="text-3xl font-black tracking-tight text-gray-900">GreatOrange</h1>
+            <h1 className="text-3xl font-black tracking-tight text-gray-900">Great Attendance</h1>
             <p className="text-sm font-semibold text-gray-400 mt-1">Sistem Absensi Karyawan Terintegrasi</p>
           </div>
 
