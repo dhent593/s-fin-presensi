@@ -42,6 +42,7 @@ interface GeofenceSettings {
   break_start_time: string;
   break_end_time: string;
   late_tolerance_minutes: number;
+  overtime_threshold_minutes: number;
 }
 
 export default function AdminPage() {
@@ -78,7 +79,8 @@ export default function AdminPage() {
     saturday_work_end_time: '12:00',
     break_start_time: '12:00',
     break_end_time: '13:00',
-    late_tolerance_minutes: 15
+    late_tolerance_minutes: 15,
+    overtime_threshold_minutes: 30
   });
   const [geofenceLoading, setGeofenceLoading] = useState(false);
   const [geofenceMessage, setGeofenceMessage] = useState('');
@@ -196,7 +198,8 @@ export default function AdminPage() {
           saturday_work_end_time: geoData.saturday_work_end_time ? geoData.saturday_work_end_time.slice(0, 5) : '12:00',
           break_start_time: geoData.break_start_time ? geoData.break_start_time.slice(0, 5) : '12:00',
           break_end_time: geoData.break_end_time ? geoData.break_end_time.slice(0, 5) : '13:00',
-          late_tolerance_minutes: Number(geoData.late_tolerance_minutes || 15)
+          late_tolerance_minutes: Number(geoData.late_tolerance_minutes || 15),
+          overtime_threshold_minutes: Number(geoData.overtime_threshold_minutes ?? 30)
         });
       }
 
@@ -303,6 +306,7 @@ export default function AdminPage() {
           break_start_time: geofence.break_start_time,
           break_end_time: geofence.break_end_time,
           late_tolerance_minutes: Number(geofence.late_tolerance_minutes),
+          overtime_threshold_minutes: Number(geofence.overtime_threshold_minutes),
           updated_at: new Date().toISOString()
         });
 
@@ -783,6 +787,47 @@ export default function AdminPage() {
     return `${mins} Menit (${hrs}j ${remainingMins}m)`;
   };
 
+  // Helper to calculate overtime minutes: minutes worked past work_end_time + threshold
+  // Only counts as overtime if employee stays MORE than overtime_threshold_minutes past end time.
+  // Returns the TOTAL extra minutes (including the threshold portion) once threshold is exceeded.
+  const getOvertimeMinutes = (checkOutStr: string | null, workEndStr: string) => {
+    if (!checkOutStr) return 0;
+    try {
+      const checkOutDate = new Date(checkOutStr);
+      const wibCheckOut = new Date(checkOutDate.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+      const checkOutHrs = wibCheckOut.getHours();
+      const checkOutMins = wibCheckOut.getMinutes();
+
+      // Use Saturday end time if applicable
+      const dayOfWeek = wibCheckOut.getDay();
+      const targetEndStr = (dayOfWeek === 6 && geofence?.saturday_work_end_time)
+        ? geofence.saturday_work_end_time
+        : workEndStr;
+
+      const [endHrs, endMins] = targetEndStr.split(':').map(Number);
+      const checkOutTotalMins = checkOutHrs * 60 + checkOutMins;
+      const endTotalMins = endHrs * 60 + (endMins || 0);
+      const threshold = geofence?.overtime_threshold_minutes ?? 30;
+
+      const diff = checkOutTotalMins - endTotalMins;
+      // Only count as overtime if the employee stayed past the threshold
+      return diff > threshold ? diff : 0;
+    } catch (err) {
+      console.error(err);
+      return 0;
+    }
+  };
+
+  // Helper to format overtime minutes for display
+  const formatOvertimeMinutes = (mins: number) => {
+    if (mins <= 0) return '0 Jam';
+    const hrs = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    if (hrs === 0) return `${remainingMins} Menit`;
+    if (remainingMins === 0) return `${hrs} Jam`;
+    return `${hrs}j ${remainingMins}m`;
+  };
+
   // Export Monthly Recap Grid to CSV file
   const handleExportRecapCSV = () => {
     const activeEmployees = processedEmployees.filter(p => p.role === 'user');
@@ -800,6 +845,7 @@ export default function AdminPage() {
       'Hadir 16-End',
       'Total Hadir',
       'Terlambat',
+      'Lembur',
       ...dateHeaders
     ];
 
@@ -817,6 +863,11 @@ export default function AdminPage() {
       // Calculate total minutes late
       const totalLateMinutes = presentDays.reduce((acc, log) => {
         return acc + getMinutesLate(log.check_in, geofence.work_start_time);
+      }, 0);
+
+      // Calculate total overtime minutes
+      const totalOvertimeMinutes = presentDays.reduce((acc, log) => {
+        return acc + getOvertimeMinutes(log.check_out, geofence.work_end_time);
       }, 0);
 
       const dailyStatus = Array.from({ length: daysCount }, (_, idx) => {
@@ -843,6 +894,7 @@ export default function AdminPage() {
         `${countPart2} Hari`,
         `${countTotal} Hari`,
         formatLateMinutes(totalLateMinutes),
+        formatOvertimeMinutes(totalOvertimeMinutes),
         ...dailyStatus
       ];
     });
@@ -1586,6 +1638,7 @@ export default function AdminPage() {
                         <th className="py-4 px-2 text-center sticky left-[250px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[70px]">Hadir 16-31</th>
                         <th className="py-4 px-2 text-center sticky left-[320px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[60px]">Total</th>
                         <th className="py-4 px-2 text-center sticky left-[380px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">Terlambat</th>
+                        <th className="py-4 px-2 text-center sticky left-[445px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">Lembur</th>
                         {Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1).map((day) => (
                           <th key={day} className="py-4 px-2 text-center w-[75px] text-[10px] sticky top-0 bg-slate-50/90 z-20">
                             {day}
@@ -1612,6 +1665,11 @@ export default function AdminPage() {
                           const totalLateMinutes = presentDays.reduce((acc, log) => {
                             return acc + getMinutesLate(log.check_in, geofence.work_start_time);
                           }, 0);
+
+                          // Calculate total overtime minutes
+                          const totalOvertimeMinutes = presentDays.reduce((acc, log) => {
+                            return acc + getOvertimeMinutes(log.check_out, geofence.work_end_time);
+                          }, 0);
                           return (
                             <tr key={emp.id} className="hover:bg-gray-50/50 transition">
                               {/* Kolom Nama Pinned */}
@@ -1632,6 +1690,9 @@ export default function AdminPage() {
                               </td>
                               <td className="py-3 px-2 sticky left-[380px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-red-500 text-xs w-[65px]">
                                 {formatLateMinutes(totalLateMinutes)}
+                              </td>
+                              <td className="py-3 px-2 sticky left-[445px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-purple-600 text-xs w-[65px]">
+                                {formatOvertimeMinutes(totalOvertimeMinutes)}
                               </td>
                               
                               {/* Kolom Tanggal */}
@@ -1881,6 +1942,24 @@ export default function AdminPage() {
                           />
                           <span className="absolute right-4 text-xs font-extrabold text-gray-400">Menit</span>
                         </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Ambang Batas Lembur</label>
+                        <div className="relative flex items-center">
+                          <input
+                            type="number"
+                            required
+                            min={0}
+                            max={480}
+                            value={geofence.overtime_threshold_minutes}
+                            onChange={(e) => setGeofence({ ...geofence, overtime_threshold_minutes: Number(e.target.value) })}
+                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
+                          />
+                          <span className="absolute right-4 text-xs font-extrabold text-gray-400">Menit</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
+                          Karyawan dihitung lembur jika pulang lebih dari <strong className="text-gray-600">{geofence.overtime_threshold_minutes} menit</strong> setelah jam pulang kantor.
+                        </p>
                       </div>
                     </div>
 
