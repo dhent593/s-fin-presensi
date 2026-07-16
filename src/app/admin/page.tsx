@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient, User } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
@@ -54,6 +54,10 @@ export default function AdminPage() {
 
   // Tabs navigation: 'dashboard' | 'employees' | 'recap' | 'geofencing'
   const [activeTab, setActiveTab] = useState<'dashboard' | 'employees' | 'recap' | 'geofencing'>('dashboard');
+
+  // Mobile sidebar state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const closeMobileSidebar = () => setIsMobileSidebarOpen(false);
 
   // Stats State
   const [stats, setStats] = useState({
@@ -940,20 +944,16 @@ export default function AdminPage() {
     }
   };
 
-  // Helper to filter and sort employee list dynamically
-  const getFilteredAndSortedEmployees = () => {
+  // Memoized: filter and sort employee list
+  const processedEmployees = useMemo(() => {
     let result = [...employees];
-    
-    // 1. Filter by search input (Name or NIK)
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
-      result = result.filter(emp => 
-        emp.full_name.toLowerCase().includes(term) || 
+      result = result.filter(emp =>
+        emp.full_name.toLowerCase().includes(term) ||
         emp.nik.toLowerCase().includes(term)
       );
     }
-
-    // 2. Sort by criteria
     if (sortBy === 'newest') {
       result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } else if (sortBy === 'excel') {
@@ -963,11 +963,66 @@ export default function AdminPage() {
     } else if (sortBy === 'nik') {
       result.sort((a, b) => a.nik.localeCompare(b.nik, undefined, { numeric: true }));
     }
-
     return result;
-  };
+  }, [employees, searchTerm, sortBy]);
 
-  const processedEmployees = getFilteredAndSortedEmployees();
+  // Memoized: O(1) lookup map: "userId_day" -> AttendanceLog
+  // Avoids O(n²) recapLogs.find() inside the render loop
+  const recapLogMap = useMemo(() => {
+    const map = new Map<string, typeof recapLogs[0]>();
+    for (const log of recapLogs) {
+      const d = new Date(log.check_in);
+      if (d.getFullYear() === recapYear && d.getMonth() === recapMonth) {
+        map.set(`${log.user_id}_${d.getDate()}`, log);
+      }
+    }
+    return map;
+  }, [recapLogs, recapYear, recapMonth]);
+
+  // Memoized: pre-computed per-employee recap stats
+  const employeeRecapStats = useMemo(() => {
+    const statsMap = new Map<string, {
+      presentDays: typeof recapLogs;
+      countPart1: number;
+      countPart2: number;
+      countTotal: number;
+      totalLateMinutes: number;
+      totalOvertimeMinutes: number;
+    }>();
+    for (const emp of processedEmployees) {
+      if (emp.role !== 'user') continue;
+      const presentDays = recapLogs.filter(l => l.user_id === emp.id);
+      const countPart1 = presentDays.filter(l => new Date(l.check_in).getDate() <= 15).length;
+      const countPart2 = presentDays.filter(l => new Date(l.check_in).getDate() >= 16).length;
+      const totalLateMinutes = presentDays.reduce((acc, log) => acc + getMinutesLate(log.check_in, geofence.work_start_time), 0);
+      const totalOvertimeMinutes = presentDays.reduce((acc, log) => acc + getOvertimeMinutes(log.check_out, geofence.work_end_time), 0);
+      statsMap.set(emp.id, {
+        presentDays,
+        countPart1,
+        countPart2,
+        countTotal: presentDays.length,
+        totalLateMinutes,
+        totalOvertimeMinutes,
+      });
+    }
+    return statsMap;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recapLogs, processedEmployees, geofence.work_start_time, geofence.work_end_time]);
+
+  // Memoized: days array for the selected month
+  const daysInSelectedMonth = useMemo(
+    () => Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1),
+    [recapYear, recapMonth]
+  );
+
+  // Memoized: Sunday lookup for the selected month
+  const sundaySet = useMemo(() => {
+    const s = new Set<number>();
+    for (const day of daysInSelectedMonth) {
+      if (new Date(recapYear, recapMonth, day).getDay() === 0) s.add(day);
+    }
+    return s;
+  }, [daysInSelectedMonth, recapYear, recapMonth]);
 
   if (loading) {
     return (
@@ -982,9 +1037,24 @@ export default function AdminPage() {
 
   return (
     <div className="bg-gray-100 font-sans antialiased text-gray-800 flex min-h-screen">
-      
+
+      {/* MOBILE SIDEBAR BACKDROP OVERLAY — always in DOM, fades via opacity */}
+      <div
+        className={`fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 md:hidden transition-opacity duration-300 ease-in-out ${
+          isMobileSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={closeMobileSidebar}
+        aria-hidden="true"
+      />
+
       {/* SIDEBAR (NAVIGASI KIRI) */}
-      <aside className="w-64 bg-white text-slate-800 flex flex-col justify-between hidden md:flex border-r border-slate-100 shadow-sm relative z-20">
+      <aside
+        style={{ willChange: 'transform' }}
+        className={`w-72 bg-white text-slate-800 flex flex-col justify-between border-r border-slate-100 shadow-xl fixed md:relative inset-y-0 left-0 z-40 md:w-64 md:translate-x-0 md:flex md:shadow-sm
+          transition-[transform,box-shadow] duration-[350ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] ${
+          isMobileSidebarOpen ? 'translate-x-0 flex' : '-translate-x-full'
+        }`}
+      >
         <div>
           {/* Logo / Judul */}
           <div className="p-6 flex items-center gap-3 border-b border-slate-100">
@@ -998,56 +1068,72 @@ export default function AdminPage() {
           {/* Menu Navigasi */}
           <nav className="p-4 space-y-1">
             <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition font-bold text-sm text-left hover-lift ${
+              onClick={() => { setActiveTab('dashboard'); closeMobileSidebar(); }}
+              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
+                transition-all duration-200 ease-out ${
                 activeTab === 'dashboard'
-                  ? 'bg-orange-50 text-orange-600 border-l-4 border-orange-500'
+                  ? 'bg-orange-50 text-orange-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'dashboard' ? 'text-orange-500 scale-110' : ''
+                }`}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
               </svg>
               Dashboard Monitor
             </button>
             
              <button
-              onClick={() => setActiveTab('employees')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition font-bold text-sm text-left hover-lift ${
+              onClick={() => { setActiveTab('employees'); closeMobileSidebar(); }}
+              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
+                transition-all duration-200 ease-out ${
                 activeTab === 'employees'
-                  ? 'bg-orange-50 text-orange-600 border-l-4 border-orange-500'
+                  ? 'bg-orange-50 text-orange-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'employees' ? 'text-orange-500 scale-110' : ''
+                }`}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
               </svg>
               Kelola Karyawan
             </button>
 
             <button
-              onClick={() => setActiveTab('recap')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition font-bold text-sm text-left hover-lift ${
+              onClick={() => { setActiveTab('recap'); closeMobileSidebar(); }}
+              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
+                transition-all duration-200 ease-out ${
                 activeTab === 'recap'
-                  ? 'bg-orange-50 text-orange-600 border-l-4 border-orange-500'
+                  ? 'bg-orange-50 text-orange-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'recap' ? 'text-orange-500 scale-110' : ''
+                }`}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
               </svg>
               Rekap Bulanan
             </button>
 
             <button
-              onClick={() => setActiveTab('geofencing')}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition font-bold text-sm text-left hover-lift ${
+              onClick={() => { setActiveTab('geofencing'); closeMobileSidebar(); }}
+              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
+                transition-all duration-200 ease-out ${
                 activeTab === 'geofencing'
-                  ? 'bg-orange-50 text-orange-600 border-l-4 border-orange-500'
+                  ? 'bg-orange-50 text-orange-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'geofencing' ? 'text-orange-500 scale-110' : ''
+                }`}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774a1.125 1.125 0 01.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.45.12l-.737-.527c-.35-.25-.806-.272-1.204-.107-.397.165-.71.505-.78.93l-.15.893c-.09.543-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.149-.894c-.07-.425-.383-.765-.78-.93-.398-.165-.854-.143-1.204.107l-.738.527a1.125 1.125 0 01-1.45-.12l-.774-.772a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.11v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.774a1.125 1.125 0 011.45-.12l.738.527c.35.25.806.272 1.204.107.397-.165.71-.505.78-.93l.15-.893z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
@@ -1080,98 +1166,111 @@ export default function AdminPage() {
       </aside>
  
       {/* AREA UTAMA Halaman (Kanan) */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+      <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto h-screen">
         
         {/* TOPBAR */}
-        <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
-          <h2 className="text-xl font-extrabold text-gray-800 tracking-tight">
-            {activeTab === 'dashboard' && 'Dashboard Monitor Presensi'}
-            {activeTab === 'employees' && 'Kelola Data Karyawan'}
-            {activeTab === 'geofencing' && 'Pengaturan Kantor'}
-          </h2>
-          <div className="text-sm font-bold text-gray-500 bg-gray-50 border px-4 py-2 rounded-xl">
+        <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 md:px-8 py-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            {/* Hamburger Button - Mobile Only */}
+            <button
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="md:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition cursor-pointer"
+              aria-label="Buka Menu"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+            <h2 className="text-base md:text-xl font-extrabold text-gray-800 tracking-tight">
+              {activeTab === 'dashboard' && 'Dashboard Monitor'}
+              {activeTab === 'employees' && 'Kelola Karyawan'}
+              {activeTab === 'recap' && 'Rekap Bulanan'}
+              {activeTab === 'geofencing' && 'Pengaturan Kantor'}
+            </h2>
+          </div>
+          <div className="text-xs md:text-sm font-bold text-gray-500 bg-gray-50 border px-3 md:px-4 py-2 rounded-xl shrink-0">
             {dateString}
           </div>
         </header>
 
         {/* TAB 1: DASHBOARD MONITOR */}
         {activeTab === 'dashboard' && (
-          <div className="p-8 space-y-8 flex-1 animate-fade-in">
+          <div className="p-4 md:p-8 space-y-5 md:space-y-8 flex-1 animate-fade-in">
             
             {/* BARIS STATISTIK */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
               {/* Total Karyawan */}
-              <div className="hover-lift bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
+              <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
                 <div>
-                  <p className="text-xs font-extrabold text-gray-400 uppercase">Total Karyawan</p>
-                  <p className="text-3xl font-black mt-1 text-gray-900">{stats.totalEmployees} <span className="text-xs font-medium text-gray-400">Orang</span></p>
+                  <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">Total Karyawan</p>
+                  <p className="text-2xl md:text-3xl font-black mt-1 text-gray-900">{stats.totalEmployees} <span className="text-xs font-medium text-gray-400">Orang</span></p>
                 </div>
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
+                <div className="p-2 md:p-3 bg-blue-50 text-blue-600 rounded-xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
                 </div>
               </div>
               {/* Hadir */}
-              <div className="hover-lift bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
+              <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
                 <div>
-                  <p className="text-xs font-extrabold text-gray-400 uppercase">Sudah Absen Masuk</p>
-                  <p className="text-3xl font-black mt-1 text-emerald-600">{stats.checkedIn} <span className="text-xs font-medium text-gray-400">Orang</span></p>
+                  <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">Sudah Absen</p>
+                  <p className="text-2xl md:text-3xl font-black mt-1 text-emerald-600">{stats.checkedIn} <span className="text-xs font-medium text-gray-400">Orang</span></p>
                 </div>
-                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <div className="p-2 md:p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
               </div>
               {/* Terlambat */}
-              <div className="hover-lift bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
+              <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
                 <div>
-                  <p className="text-xs font-extrabold text-gray-400 uppercase">Terlambat Hari Ini</p>
-                  <p className="text-3xl font-black mt-1 text-amber-500">{stats.late} <span className="text-xs font-medium text-gray-400">Orang</span></p>
+                  <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">Terlambat</p>
+                  <p className="text-2xl md:text-3xl font-black mt-1 text-amber-500">{stats.late} <span className="text-xs font-medium text-gray-400">Orang</span></p>
                 </div>
-                <div className="p-3 bg-amber-50 text-amber-500 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <div className="p-2 md:p-3 bg-amber-50 text-amber-500 rounded-xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
               </div>
               {/* Belum Hadir */}
-              <div className="hover-lift bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
+              <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
                 <div>
-                  <p className="text-xs font-extrabold text-gray-400 uppercase">Belum Absen</p>
-                  <p className="text-3xl font-black mt-1 text-red-500">{stats.absent} <span className="text-xs font-medium text-gray-400">Orang</span></p>
+                  <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">Belum Absen</p>
+                  <p className="text-2xl md:text-3xl font-black mt-1 text-red-500">{stats.absent} <span className="text-xs font-medium text-gray-400">Orang</span></p>
                 </div>
-                <div className="p-3 bg-red-50 text-red-500 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <div className="p-2 md:p-3 bg-red-50 text-red-500 rounded-xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
               </div>
             </div>
 
             {/* LAYOUT DUA KOLOM */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
               
               {/* Kiri: Tabel Presensi Hari Ini */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 lg:col-span-2">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-bold text-gray-800">Aktivitas Presensi Hari Ini</h3>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 lg:col-span-2">
+                <div className="flex justify-between items-center mb-4 md:mb-6">
+                  <h3 className="text-sm md:text-lg font-bold text-gray-800">Aktivitas Presensi Hari Ini</h3>
                   <button 
                     onClick={handleExportCSV}
-                    className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition active:scale-95"
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 md:px-4 py-2 md:py-2.5 rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition active:scale-95"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                    Ekspor (.CSV)
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                    <span className="hidden sm:inline">Ekspor</span> CSV
                   </button>
                 </div>
 
-                <div className="overflow-x-auto max-h-[500px] overflow-y-auto border border-slate-100/80 rounded-2xl shadow-inner bg-slate-50/20">
-                  <table className="w-full text-left border-collapse">
+                <div className="overflow-x-auto max-h-[400px] md:max-h-[500px] overflow-y-auto border border-slate-100/80 rounded-2xl shadow-inner bg-slate-50/20">
+                  <table className="w-full text-left border-collapse min-w-[400px]">
                     <thead className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-md shadow-[0_1px_0_rgba(241,245,249,1)]">
                       <tr className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                        <th className="py-3 px-4 rounded-l-xl">Nama / NIK</th>
-                        <th className="py-3 px-4">Jam Masuk</th>
-                        <th className="py-3 px-4">Jam Pulang</th>
-                        <th className="py-3 px-4 rounded-r-xl">Status</th>
+                        <th className="py-3 px-3 md:px-4 rounded-l-xl">Nama / NIK</th>
+                        <th className="py-3 px-3 md:px-4">Masuk</th>
+                        <th className="py-3 px-3 md:px-4 hidden sm:table-cell">Pulang</th>
+                        <th className="py-3 px-3 md:px-4 rounded-r-xl">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="text-sm divide-y divide-gray-50 font-bold text-gray-700">
+                    <tbody className="text-xs md:text-sm divide-y divide-gray-50 font-bold text-gray-700">
                       {logs.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="py-8 text-center text-gray-400 font-bold">
+                          <td colSpan={4} className="py-8 text-center text-gray-400 font-bold text-xs">
                             Belum ada aktivitas presensi hari ini.
                           </td>
                         </tr>
@@ -1191,18 +1290,15 @@ export default function AdminPage() {
 
                           return (
                             <tr key={log.id} className="hover:bg-gray-50/50 transition">
-                              <td className="py-4 px-4">
-                                <p className="font-extrabold text-gray-900">{log.profiles?.full_name || 'Karyawan'}</p>
-                                <p className="text-xs text-gray-400 font-bold">NIK: {log.profiles?.nik || '-'}</p>
+                              <td className="py-3 px-3 md:px-4">
+                                <p className="font-extrabold text-gray-900 text-xs md:text-sm">{log.profiles?.full_name || 'Karyawan'}</p>
+                                <p className="text-[10px] text-gray-400 font-bold">NIK: {log.profiles?.nik || '-'}</p>
                               </td>
-                              <td className="py-4 px-4 text-gray-600">{timeIn}</td>
-                              <td className="py-4 px-4 text-gray-600">{timeOut}</td>
-                              <td className="py-4 px-4">
-                                <span className={`inline-flex text-xs px-2.5 py-1 rounded-full border ${badgeClass}`}>
-                                  {log.status}
-                                  {log.status === 'Terlambat' && (
-                                    ` (${getMinutesLate(log.check_in, geofence.work_start_time)} Menit)`
-                                  )}
+                              <td className="py-3 px-3 md:px-4 text-gray-600">{timeIn}</td>
+                              <td className="py-3 px-3 md:px-4 text-gray-600 hidden sm:table-cell">{timeOut}</td>
+                              <td className="py-3 px-3 md:px-4">
+                                <span className={`inline-flex text-[10px] md:text-xs px-2 py-0.5 rounded-full border ${badgeClass}`}>
+                                  {log.status === 'Tepat Waktu' ? '✓ Tepat' : log.status === 'Terlambat' ? `Telat` : log.status}
                                 </span>
                               </td>
                             </tr>
@@ -1250,22 +1346,22 @@ export default function AdminPage() {
 
         {/* TAB 2: KELOLA KARYAWAN */}
         {activeTab === 'employees' && (
-          <div className="p-8 grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 animate-fade-in">
+          <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8 flex-1 animate-fade-in">
             
             {/* Kiri: Daftar Karyawan Terdaftar */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 lg:col-span-2">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold text-gray-800">Daftar Karyawan Terdaftar</h3>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 lg:col-span-2">
+              <div className="flex flex-wrap justify-between items-center gap-3 mb-4 md:mb-6">
+                <h3 className="text-sm md:text-lg font-bold text-gray-800">Daftar Karyawan Terdaftar</h3>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setShowResetModal(true)}
-                    className="hover-lift border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-2"
+                    className="hover-lift border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs py-2 px-3 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                     </svg>
-                    Reset Data
+                    <span className="hidden sm:inline">Reset</span> Data
                   </button>
 
                   <input
@@ -1277,12 +1373,12 @@ export default function AdminPage() {
                   />
                   <label
                     htmlFor="excel-import"
-                    className="hover-lift bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md cursor-pointer flex items-center gap-2"
+                    className="hover-lift bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Import Excel
+                    Import
                   </label>
                 </div>
               </div>
@@ -1431,9 +1527,9 @@ export default function AdminPage() {
             </div>
 
             {/* Kanan: Form Registrasi / Edit Karyawan */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-fit animate-fade-in" key={editingEmployee ? 'edit' : 'register'}>
-              <h3 className="text-lg font-bold text-gray-800 mb-2">
-                {editingEmployee ? 'Edit Data Karyawan' : 'Daftarkan Karyawan Baru'}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 h-fit animate-fade-in" key={editingEmployee ? 'edit' : 'register'}>
+              <h3 className="text-sm md:text-lg font-bold text-gray-800 mb-1 md:mb-2">
+                {editingEmployee ? 'Edit Karyawan' : 'Daftarkan Karyawan Baru'}
               </h3>
               <p className="text-xs text-gray-400 mb-6 leading-relaxed">
                 {editingEmployee 
@@ -1522,22 +1618,22 @@ export default function AdminPage() {
 
         {/* TAB 4: REKAP BULANAN */}
         {activeTab === 'recap' && (
-          <div className="p-8 flex-1 flex flex-col animate-fade-in w-full overflow-x-hidden">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-100 pb-4 mb-4">
+          <div className="p-4 md:p-8 flex-1 flex flex-col animate-fade-in w-full overflow-x-hidden">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 mb-4 md:mb-6">
+              <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-800">Rekap Bulanan Kehadiran Karyawan</h3>
-                  <p className="text-xs text-gray-400 leading-relaxed">
-                    Lihat rekap absensi lengkap karyawan dalam satu bulan. Arahkan kursor ke tanda centang/silang untuk melihat detail jam kerja.
+                  <h3 className="text-sm md:text-lg font-bold text-gray-800">Rekap Bulanan Kehadiran Karyawan</h3>
+                  <p className="text-[10px] md:text-xs text-gray-400 leading-relaxed mt-1">
+                    Arahkan kursor ke tanda centang/silang untuk melihat detail jam kerja.
                   </p>
                 </div>
                 
                 {/* Selector Bulan & Tahun + Tombol Ekspor */}
-                <div className="flex gap-2 shrink-0 items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                   <select
                     value={recapMonth}
                     onChange={(e) => setRecapMonth(Number(e.target.value))}
-                    className="bg-gray-50 border border-gray-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
+                    className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
                   >
                     {[
                       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -1550,7 +1646,7 @@ export default function AdminPage() {
                   <select
                     value={recapYear}
                     onChange={(e) => setRecapYear(Number(e.target.value))}
-                    className="bg-gray-50 border border-gray-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
+                    className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
                   >
                     {[2025, 2026, 2027, 2028].map((y) => (
                       <option key={y} value={y}>{y}</option>
@@ -1559,9 +1655,9 @@ export default function AdminPage() {
 
                   <button
                     onClick={handleExportRecapCSV}
-                    className="hover-lift bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md cursor-pointer flex items-center gap-2"
+                    className="hover-lift bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
                     Ekspor (.CSV)
@@ -1655,23 +1751,11 @@ export default function AdminPage() {
                         </tr>
                       ) : (
                         processedEmployees.filter(p => p.role === 'user').map((emp) => {
-                          const daysInMonth = Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1);
-                          const presentDays = recapLogs.filter(l => l.user_id === emp.id);
-                          const countPart1 = presentDays.filter(l => new Date(l.check_in).getDate() <= 15).length;
-                          const countPart2 = presentDays.filter(l => new Date(l.check_in).getDate() >= 16).length;
-                          const countTotal = presentDays.length;
-
-                          // Calculate total minutes late
-                          const totalLateMinutes = presentDays.reduce((acc, log) => {
-                            return acc + getMinutesLate(log.check_in, geofence.work_start_time);
-                          }, 0);
-
-                          // Calculate total overtime minutes
-                          const totalOvertimeMinutes = presentDays.reduce((acc, log) => {
-                            return acc + getOvertimeMinutes(log.check_out, geofence.work_end_time);
-                          }, 0);
+                          const stats = employeeRecapStats.get(emp.id);
+                          if (!stats) return null;
+                          const { countPart1, countPart2, countTotal, totalLateMinutes, totalOvertimeMinutes } = stats;
                           return (
-                            <tr key={emp.id} className="hover:bg-gray-50/50 transition">
+                            <tr key={emp.id} className="hover:bg-gray-50/50">
                               {/* Kolom Nama Pinned */}
                               <td className="py-3 px-4 sticky left-0 bg-white z-10 border-r border-gray-100 shadow-[2px_0_5px_rgba(0,0,0,0.02)] w-[180px]">
                                 <p className="font-extrabold text-gray-900 text-xs">{emp.full_name}</p>
@@ -1695,28 +1779,20 @@ export default function AdminPage() {
                                 {formatOvertimeMinutes(totalOvertimeMinutes)}
                               </td>
                               
-                              {/* Kolom Tanggal */}
-                              {daysInMonth.map((day) => {
-                                const log = recapLogs.find(l => {
-                                  const cDate = new Date(l.check_in);
-                                  return l.user_id === emp.id &&
-                                         cDate.getFullYear() === recapYear &&
-                                         cDate.getMonth() === recapMonth &&
-                                         cDate.getDate() === day;
-                                });
-
-                                const dateObj = new Date(recapYear, recapMonth, day);
-                                const isSunday = dateObj.getDay() === 0;
+                              {/* Kolom Tanggal - O(1) map lookup */}
+                              {daysInSelectedMonth.map((day) => {
+                                const log = recapLogMap.get(`${emp.id}_${day}`);
+                                const isSunday = sundaySet.has(day);
 
                                 return (
                                   <td 
                                     key={day} 
                                     onClick={() => handleEditCellClick(emp, day, log)}
-                                    className="py-2.5 px-1.5 text-center align-middle w-[75px] cursor-pointer hover:bg-orange-50/50 transition duration-150"
+                                    className="py-2.5 px-1.5 text-center align-middle w-[75px] cursor-pointer hover:bg-orange-50/50"
                                     title="Klik untuk tambah/edit absensi"
                                   >
                                     {log ? (
-                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl transition duration-200 hover:bg-emerald-100 cursor-pointer">
+                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl hover:bg-emerald-100 cursor-pointer">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5 mb-0.5">
                                           <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                                         </svg>
@@ -1745,7 +1821,7 @@ export default function AdminPage() {
                                         </div>
                                       </div>
                                     ) : isSunday ? (
-                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl transition duration-200 hover:bg-slate-200 cursor-pointer">
+                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-200 cursor-pointer">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5 mb-0.5">
                                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
@@ -1759,7 +1835,7 @@ export default function AdminPage() {
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-red-50 text-red-500 border border-red-100 rounded-xl transition duration-200 hover:bg-red-100 cursor-pointer">
+                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-100 cursor-pointer">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3 h-3 mb-0.5">
                                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                                         </svg>
