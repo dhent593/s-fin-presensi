@@ -115,6 +115,9 @@ export default function AdminPage() {
   const [recapLoading, setRecapLoading] = useState<boolean>(false);
   const [showResetRecapModal, setShowResetRecapModal] = useState(false);
   const [resetRecapLoading, setResetRecapLoading] = useState(false);
+  // Date-range for recap summary (day numbers within the selected month)
+  const [recapStartDay, setRecapStartDay] = useState<number>(1);
+  const [recapEndDay, setRecapEndDay] = useState<number>(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate());
 
   // Manual Attendance Correction states
   const [editingCell, setEditingCell] = useState<{
@@ -832,50 +835,48 @@ export default function AdminPage() {
     return `${hrs}j ${remainingMins}m`;
   };
 
-  // Export Monthly Recap Grid to CSV file
-  const handleExportRecapCSV = () => {
+  // Export Monthly Recap Grid to XLSX file (styled)
+  const handleExportRecapXLSX = () => {
     const activeEmployees = processedEmployees.filter(p => p.role === 'user');
     if (activeEmployees.length === 0) {
       alert('Tidak ada data karyawan untuk diekspor.');
       return;
     }
 
-    const daysCount = new Date(recapYear, recapMonth + 1, 0).getDate();
-    const dateHeaders = Array.from({ length: daysCount }, (_, i) => `Tanggal ${i + 1}`);
-    const headers = [
-      'Nama Karyawan',
-      'NIK',
-      'Hadir 1-15',
-      'Hadir 16-End',
-      'Total Hadir',
-      'Terlambat',
-      'Lembur',
-      ...dateHeaders
-    ];
-
     const indonesianMonths = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
 
-    const rows = activeEmployees.map(emp => {
-      const presentDays = recapLogs.filter(l => l.user_id === emp.id);
-      const countPart1 = presentDays.filter(l => new Date(l.check_in).getDate() <= 15).length;
-      const countPart2 = presentDays.filter(l => new Date(l.check_in).getDate() >= 16).length;
-      const countTotal = presentDays.length;
+    const totalDaysInMonth = new Date(recapYear, recapMonth + 1, 0).getDate();
+    const clampedStart = Math.max(recapStartDay, 1);
+    const clampedEnd = Math.min(recapEndDay, totalDaysInMonth);
+    // Days to export (matches the visible grid)
+    const exportDays = Array.from(
+      { length: Math.max(0, clampedEnd - clampedStart + 1) },
+      (_, i) => clampedStart + i
+    );
+    const FIXED_COLS = 5; // No, Nama, NIK, Hadir(range), Total, Terlambat, Lembur
 
-      // Calculate total minutes late
-      const totalLateMinutes = presentDays.reduce((acc, log) => {
+    // ── Build data rows ──────────────────────────────────────────────────────
+    const dataRows = activeEmployees.map((emp, rowIdx) => {
+      const presentDays = recapLogs.filter(l => l.user_id === emp.id);
+      const countTotal = presentDays.length;
+      // Count within selected range
+      const inRange = presentDays.filter(l => {
+        const d = new Date(l.check_in).getDate();
+        return d >= clampedStart && d <= clampedEnd;
+      });
+      const countInRange = inRange.length;
+
+      const totalLateMinutes = inRange.reduce((acc, log) => {
         return acc + getMinutesLate(log.check_in, geofence.work_start_time);
       }, 0);
-
-      // Calculate total overtime minutes
-      const totalOvertimeMinutes = presentDays.reduce((acc, log) => {
+      const totalOvertimeMinutes = inRange.reduce((acc, log) => {
         return acc + getOvertimeMinutes(log.check_out, geofence.work_end_time);
       }, 0);
 
-      const dailyStatus = Array.from({ length: daysCount }, (_, idx) => {
-        const day = idx + 1;
+      const dailyStatus = exportDays.map(day => {
         const log = recapLogs.find(l => {
           const cDate = new Date(l.check_in);
           return l.user_id === emp.id &&
@@ -883,40 +884,178 @@ export default function AdminPage() {
                  cDate.getMonth() === recapMonth &&
                  cDate.getDate() === day;
         });
-
         if (log) {
           const timeStr = new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
           return `${log.status} (${timeStr})`;
         }
-        return 'Mangkir';
+        // Check if Sunday
+        const isSun = new Date(recapYear, recapMonth, day).getDay() === 0;
+        return isSun ? 'Libur' : '—';
       });
 
-      return [
-        emp.full_name,
-        emp.nik,
-        `${countPart1} Hari`,
-        `${countPart2} Hari`,
-        `${countTotal} Hari`,
-        formatLateMinutes(totalLateMinutes),
-        formatOvertimeMinutes(totalOvertimeMinutes),
-        ...dailyStatus
-      ];
+      return {
+        no: rowIdx + 1,
+        nama: emp.full_name,
+        nik: emp.nik,
+        countInRange,
+        total: countTotal,
+        terlambat: formatLateMinutes(totalLateMinutes),
+        lembur: formatOvertimeMinutes(totalOvertimeMinutes),
+        daily: dailyStatus,
+      };
     });
 
-    const csvContent = "\ufeff" + [
-      headers.join(','),
-      ...rows.map(e => e.map(val => `"${val}"`).join(','))
-    ].join('\n');
+    // ── Build worksheet data (array-of-arrays) ───────────────────────────────
+    // Row 1: Title
+    const titleRow = [`REKAP BULANAN KEHADIRAN KARYAWAN — ${indonesianMonths[recapMonth].toUpperCase()} ${recapYear} (Tgl ${clampedStart}–${clampedEnd})`];
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `rekap_bulanan_${indonesianMonths[recapMonth]}_${recapYear}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Row 2: blank
+    const blankRow: string[] = [];
+
+    // Row 3: headers
+    const dateHeaders = exportDays.map(d => `${d}`);
+    const headerRow = [
+      'No',
+      'Nama Karyawan',
+      'NIK',
+      `Hadir (${clampedStart}–${clampedEnd})`,
+      'Total Hadir',
+      'Terlambat',
+      'Lembur',
+      ...dateHeaders,
+    ];
+
+    // Data rows
+    const bodyRows = dataRows.map(r => [
+      r.no,
+      r.nama,
+      r.nik,
+      r.countInRange,
+      r.total,
+      r.terlambat,
+      r.lembur,
+      ...r.daily,
+    ]);
+
+    const aoa = [titleRow, blankRow, headerRow, ...bodyRows];
+
+    // ── Create workbook & sheet ───────────────────────────────────────────────
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    const totalCols = 7 + exportDays.length; // No, Nama, NIK, Hadir(range), Total, Terlambat, Lembur + daily cols
+
+    // ── Column widths ────────────────────────────────────────────────────────
+    ws['!cols'] = [
+      { wch: 4 },   // No
+      { wch: 28 },  // Nama
+      { wch: 14 },  // NIK
+      { wch: 14 },  // Hadir (range)
+      { wch: 12 },  // Total
+      { wch: 14 },  // Terlambat
+      { wch: 14 },  // Lembur
+      ...Array(exportDays.length).fill({ wch: 16 }), // tanggal harian
+    ];
+
+    // ── Row heights ──────────────────────────────────────────────────────────
+    ws['!rows'] = [
+      { hpt: 24 }, // title row
+      { hpt: 6 },  // blank
+      { hpt: 30 }, // header
+      ...Array(dataRows.length).fill({ hpt: 20 }),
+    ];
+
+    // ── Merge title across all columns ───────────────────────────────────────
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
+    ];
+
+    // ── Freeze header row (row 3 = index 2) ──────────────────────────────────
+    ws['!freeze'] = { xSplit: 3, ySplit: 3 }; // freeze first 3 cols & top 3 rows
+
+    // ── Apply cell styles ────────────────────────────────────────────────────
+    const HEADER_ROW = 2; // 0-indexed row index of header
+    const DATA_START = 3; // 0-indexed
+
+    const colLetter = (c: number) => {
+      let s = '';
+      let n = c + 1;
+      while (n > 0) {
+        const rem = (n - 1) % 26;
+        s = String.fromCharCode(65 + rem) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    };
+
+    const cellRef = (r: number, c: number) => `${colLetter(c)}${r + 1}`;
+
+    // Style title cell
+    const titleCell = ws[cellRef(0, 0)];
+    if (titleCell) {
+      titleCell.s = {
+        font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '1E293B' } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
+      };
+    }
+
+    // Style header row
+    for (let c = 0; c < totalCols; c++) {
+      const ref = cellRef(HEADER_ROW, c);
+      const cell = ws[ref];
+      if (!cell) continue;
+      cell.s = {
+        font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '334155' } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: {
+          top:    { style: 'thin', color: { rgb: '64748B' } },
+          bottom: { style: 'thin', color: { rgb: '64748B' } },
+          left:   { style: 'thin', color: { rgb: '64748B' } },
+          right:  { style: 'thin', color: { rgb: '64748B' } },
+        },
+      };
+    }
+
+    // Style data rows
+    for (let r = 0; r < dataRows.length; r++) {
+      const isEven = r % 2 === 0;
+      const rowBg = isEven ? 'FFFFFF' : 'F8FAFC';
+      for (let c = 0; c < totalCols; c++) {
+        const ref = cellRef(DATA_START + r, c);
+        const cell = ws[ref];
+        if (!cell) continue;
+
+        // Colour daily cells (starting at column index 7)
+        let fillColor = rowBg;
+        if (c >= 7) {
+          const val = String(cell.v ?? '');
+          if (val === '—') fillColor = 'FEE2E2';
+          else if (val.startsWith('Tepat') || val.startsWith('Hadir')) fillColor = 'DCFCE7';
+          else if (val.startsWith('Terlambat')) fillColor = 'FEF3C7';
+          else if (val === 'Libur') fillColor = 'E0E7FF';
+        }
+
+        cell.s = {
+          font: { sz: 9 },
+          fill: { fgColor: { rgb: fillColor } },
+          alignment: { horizontal: c < 3 ? 'left' : 'center', vertical: 'center', wrapText: false },
+          border: {
+            top:    { style: 'hair', color: { rgb: 'CBD5E1' } },
+            bottom: { style: 'hair', color: { rgb: 'CBD5E1' } },
+            left:   { style: 'hair', color: { rgb: 'CBD5E1' } },
+            right:  { style: 'hair', color: { rgb: 'CBD5E1' } },
+          },
+        };
+      }
+    }
+
+    // ── Export ───────────────────────────────────────────────────────────────
+    const sheetName = `Rekap ${indonesianMonths[recapMonth]} ${recapYear}`;
+    const fileName = `rekap_bulanan_${indonesianMonths[recapMonth]}_${recapYear}_tgl${clampedStart}-${clampedEnd}.xlsx`;
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, fileName, { cellStyles: true });
   };
 
   // Reset / hapus semua log absensi pada bulan & tahun yang dipilih
@@ -979,12 +1118,11 @@ export default function AdminPage() {
     return map;
   }, [recapLogs, recapYear, recapMonth]);
 
-  // Memoized: pre-computed per-employee recap stats
+  // Memoized: pre-computed per-employee recap stats (respects the custom date range)
   const employeeRecapStats = useMemo(() => {
     const statsMap = new Map<string, {
       presentDays: typeof recapLogs;
-      countPart1: number;
-      countPart2: number;
+      countInRange: number;
       countTotal: number;
       totalLateMinutes: number;
       totalOvertimeMinutes: number;
@@ -992,14 +1130,16 @@ export default function AdminPage() {
     for (const emp of processedEmployees) {
       if (emp.role !== 'user') continue;
       const presentDays = recapLogs.filter(l => l.user_id === emp.id);
-      const countPart1 = presentDays.filter(l => new Date(l.check_in).getDate() <= 15).length;
-      const countPart2 = presentDays.filter(l => new Date(l.check_in).getDate() >= 16).length;
-      const totalLateMinutes = presentDays.reduce((acc, log) => acc + getMinutesLate(log.check_in, geofence.work_start_time), 0);
-      const totalOvertimeMinutes = presentDays.reduce((acc, log) => acc + getOvertimeMinutes(log.check_out, geofence.work_end_time), 0);
+      // Count attendance within the custom date range
+      const inRange = presentDays.filter(l => {
+        const d = new Date(l.check_in).getDate();
+        return d >= recapStartDay && d <= recapEndDay;
+      });
+      const totalLateMinutes = inRange.reduce((acc, log) => acc + getMinutesLate(log.check_in, geofence.work_start_time), 0);
+      const totalOvertimeMinutes = inRange.reduce((acc, log) => acc + getOvertimeMinutes(log.check_out, geofence.work_end_time), 0);
       statsMap.set(emp.id, {
         presentDays,
-        countPart1,
-        countPart2,
+        countInRange: inRange.length,
         countTotal: presentDays.length,
         totalLateMinutes,
         totalOvertimeMinutes,
@@ -1007,12 +1147,20 @@ export default function AdminPage() {
     }
     return statsMap;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recapLogs, processedEmployees, geofence.work_start_time, geofence.work_end_time]);
+  }, [recapLogs, processedEmployees, geofence.work_start_time, geofence.work_end_time, recapStartDay, recapEndDay]);
 
-  // Memoized: days array for the selected month
+  // Memoized: days array for the selected month (filtered to the chosen range)
   const daysInSelectedMonth = useMemo(
-    () => Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1),
-    [recapYear, recapMonth]
+    () => {
+      const totalDays = new Date(recapYear, recapMonth + 1, 0).getDate();
+      const clampedEnd = Math.min(recapEndDay, totalDays);
+      const clampedStart = Math.max(recapStartDay, 1);
+      return Array.from(
+        { length: Math.max(0, clampedEnd - clampedStart + 1) },
+        (_, i) => clampedStart + i
+      );
+    },
+    [recapYear, recapMonth, recapStartDay, recapEndDay]
   );
 
   // Memoized: Sunday lookup for the selected month
@@ -1628,11 +1776,18 @@ export default function AdminPage() {
                   </p>
                 </div>
                 
-                {/* Selector Bulan & Tahun + Tombol Ekspor */}
+                {/* Baris 1: Selector Bulan, Tahun, Tombol Aksi */}
                 <div className="flex flex-wrap gap-2 items-center">
                   <select
                     value={recapMonth}
-                    onChange={(e) => setRecapMonth(Number(e.target.value))}
+                    onChange={(e) => {
+                      const newMonth = Number(e.target.value);
+                      setRecapMonth(newMonth);
+                      // Reset range to full month
+                      const lastDay = new Date(recapYear, newMonth + 1, 0).getDate();
+                      setRecapStartDay(1);
+                      setRecapEndDay(lastDay);
+                    }}
                     className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
                   >
                     {[
@@ -1645,7 +1800,13 @@ export default function AdminPage() {
 
                   <select
                     value={recapYear}
-                    onChange={(e) => setRecapYear(Number(e.target.value))}
+                    onChange={(e) => {
+                      const newYear = Number(e.target.value);
+                      setRecapYear(newYear);
+                      const lastDay = new Date(newYear, recapMonth + 1, 0).getDate();
+                      setRecapStartDay(1);
+                      setRecapEndDay(lastDay);
+                    }}
                     className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
                   >
                     {[2025, 2026, 2027, 2028].map((y) => (
@@ -1653,14 +1814,61 @@ export default function AdminPage() {
                     ))}
                   </select>
 
+                  {/* Rentang Tanggal */}
+                  <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 rounded-xl px-2.5 py-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3 h-3 text-orange-500 shrink-0">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                    </svg>
+                    <span className="text-[10px] font-extrabold text-orange-600 uppercase tracking-wide">Tgl</span>
+                    <select
+                      value={recapStartDay}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setRecapStartDay(v);
+                        if (v > recapEndDay) setRecapEndDay(v);
+                      }}
+                      className="bg-transparent border-none text-xs font-black text-orange-700 focus:outline-none cursor-pointer w-10"
+                    >
+                      {Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1).map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] font-extrabold text-orange-500">s/d</span>
+                    <select
+                      value={recapEndDay}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setRecapEndDay(v);
+                        if (v < recapStartDay) setRecapStartDay(v);
+                      }}
+                      className="bg-transparent border-none text-xs font-black text-orange-700 focus:outline-none cursor-pointer w-10"
+                    >
+                      {Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1).map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                    {/* Reset to full month */}
+                    {(recapStartDay !== 1 || recapEndDay !== new Date(recapYear, recapMonth + 1, 0).getDate()) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRecapStartDay(1);
+                          setRecapEndDay(new Date(recapYear, recapMonth + 1, 0).getDate());
+                        }}
+                        className="ml-0.5 text-orange-400 hover:text-orange-600 transition text-[10px] font-black cursor-pointer"
+                        title="Reset ke bulan penuh"
+                      >✕</button>
+                    )}
+                  </div>
+
                   <button
-                    onClick={handleExportRecapCSV}
-                    className="hover-lift bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
+                    onClick={handleExportRecapXLSX}
+                    className="hover-lift bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
-                    Ekspor (.CSV)
+                    Ekspor (.XLSX)
                   </button>
 
                   <button
@@ -1730,12 +1938,14 @@ export default function AdminPage() {
                     <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md shadow-[0_1px_0_rgba(241,245,249,1)]">
                       <tr className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
                         <th className="py-4 px-4 sticky left-0 top-0 bg-white z-30 border-r border-gray-100 rounded-l-xl w-[180px]">Nama Karyawan</th>
-                        <th className="py-4 px-2 text-center sticky left-[180px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[70px]">Hadir 1-15</th>
-                        <th className="py-4 px-2 text-center sticky left-[250px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[70px]">Hadir 16-31</th>
-                        <th className="py-4 px-2 text-center sticky left-[320px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[60px]">Total</th>
-                        <th className="py-4 px-2 text-center sticky left-[380px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">Terlambat</th>
-                        <th className="py-4 px-2 text-center sticky left-[445px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">Lembur</th>
-                        {Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1).map((day) => (
+                        <th className="py-4 px-2 text-center sticky left-[180px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[90px]">
+                          Hadir<br/>
+                          <span className="text-[9px] font-bold text-orange-400 normal-case">{recapStartDay}–{Math.min(recapEndDay, new Date(recapYear, recapMonth + 1, 0).getDate())}</span>
+                        </th>
+                        <th className="py-4 px-2 text-center sticky left-[270px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[60px]">Total</th>
+                        <th className="py-4 px-2 text-center sticky left-[330px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">Terlambat</th>
+                        <th className="py-4 px-2 text-center sticky left-[395px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">Lembur</th>
+                        {daysInSelectedMonth.map((day) => (
                           <th key={day} className="py-4 px-2 text-center w-[75px] text-[10px] sticky top-0 bg-slate-50/90 z-20">
                             {day}
                           </th>
@@ -1753,7 +1963,7 @@ export default function AdminPage() {
                         processedEmployees.filter(p => p.role === 'user').map((emp) => {
                           const stats = employeeRecapStats.get(emp.id);
                           if (!stats) return null;
-                          const { countPart1, countPart2, countTotal, totalLateMinutes, totalOvertimeMinutes } = stats;
+                          const { countInRange, countTotal, totalLateMinutes, totalOvertimeMinutes } = stats;
                           return (
                             <tr key={emp.id} className="hover:bg-gray-50/50">
                               {/* Kolom Nama Pinned */}
@@ -1762,20 +1972,17 @@ export default function AdminPage() {
                                 <p className="text-[10px] text-gray-400 font-bold">NIK: {emp.nik}</p>
                               </td>
 
-                              {/* Kolom Ringkasan Kehadiran Pinned */}
-                              <td className="py-3 px-2 sticky left-[180px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-emerald-600 text-xs w-[70px]">
-                                {countPart1} Hari
+                              {/* Kolom Ringkasan Kehadiran Pinned — sesuai rentang */}
+                              <td className="py-3 px-2 sticky left-[180px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-emerald-600 text-xs w-[90px]">
+                                {countInRange} Hari
                               </td>
-                              <td className="py-3 px-2 sticky left-[250px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-emerald-600 text-xs w-[70px]">
-                                {countPart2} Hari
-                              </td>
-                              <td className="py-3 px-2 sticky left-[320px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-orange-600 text-xs w-[60px]">
+                              <td className="py-3 px-2 sticky left-[270px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-orange-600 text-xs w-[60px]">
                                 {countTotal} Hari
                               </td>
-                              <td className="py-3 px-2 sticky left-[380px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-red-500 text-xs w-[65px]">
+                              <td className="py-3 px-2 sticky left-[330px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-red-500 text-xs w-[65px]">
                                 {formatLateMinutes(totalLateMinutes)}
                               </td>
-                              <td className="py-3 px-2 sticky left-[445px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-purple-600 text-xs w-[65px]">
+                              <td className="py-3 px-2 sticky left-[395px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-purple-600 text-xs w-[65px]">
                                 {formatOvertimeMinutes(totalOvertimeMinutes)}
                               </td>
                               
@@ -1835,11 +2042,10 @@ export default function AdminPage() {
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-100 cursor-pointer">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3 h-3 mb-0.5">
+                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-red-50 text-red-400 border border-red-100 rounded-xl hover:bg-red-100 cursor-pointer">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
                                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                                         </svg>
-                                        <span className="text-[8px] font-black tracking-tighter">Mangkir</span>
 
                                         {/* Tooltip on Hover */}
                                         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-40 bg-slate-900 text-white text-center py-2 px-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] font-bold">
