@@ -885,8 +885,11 @@ export default function AdminPage() {
                  cDate.getDate() === day;
         });
         if (log) {
-          const timeStr = new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
-          return `${log.status} (${timeStr})`;
+          const timeInStr = new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
+          const timeOutStr = log.check_out
+            ? new Date(log.check_out).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')
+            : '--:--';
+          return `${log.status} (${timeInStr} → ${timeOutStr})`;
         }
         // Check if Sunday
         const isSun = new Date(recapYear, recapMonth, day).getDay() === 0;
@@ -1411,14 +1414,15 @@ export default function AdminPage() {
                       <tr className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                         <th className="py-3 px-3 md:px-4 rounded-l-xl">Nama / NIK</th>
                         <th className="py-3 px-3 md:px-4">Masuk</th>
-                        <th className="py-3 px-3 md:px-4 hidden sm:table-cell">Pulang</th>
+                        <th className="py-3 px-3 md:px-4">Pulang</th>
+                        <th className="py-3 px-3 md:px-4">Lembur</th>
                         <th className="py-3 px-3 md:px-4 rounded-r-xl">Status</th>
                       </tr>
                     </thead>
                     <tbody className="text-xs md:text-sm divide-y divide-gray-50 font-bold text-gray-700">
                       {logs.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="py-8 text-center text-gray-400 font-bold text-xs">
+                          <td colSpan={5} className="py-8 text-center text-gray-400 font-bold text-xs">
                             Belum ada aktivitas presensi hari ini.
                           </td>
                         </tr>
@@ -1436,6 +1440,8 @@ export default function AdminPage() {
                             badgeClass = 'bg-amber-50 text-amber-700 border-amber-100';
                           }
 
+                          const overtimeMins = getOvertimeMinutes(log.check_out, geofence.work_end_time);
+
                           return (
                             <tr key={log.id} className="hover:bg-gray-50/50 transition">
                               <td className="py-3 px-3 md:px-4">
@@ -1443,7 +1449,19 @@ export default function AdminPage() {
                                 <p className="text-[10px] text-gray-400 font-bold">NIK: {log.profiles?.nik || '-'}</p>
                               </td>
                               <td className="py-3 px-3 md:px-4 text-gray-600">{timeIn}</td>
-                              <td className="py-3 px-3 md:px-4 text-gray-600 hidden sm:table-cell">{timeOut}</td>
+                              <td className="py-3 px-3 md:px-4 text-gray-600">{timeOut}</td>
+                              <td className="py-3 px-3 md:px-4">
+                                {overtimeMins > 0 ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] md:text-xs px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-100 font-bold">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3 h-3">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    {formatOvertimeMinutes(overtimeMins)}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-300 text-xs font-bold">—</span>
+                                )}
+                              </td>
                               <td className="py-3 px-3 md:px-4">
                                 <span className={`inline-flex text-[10px] md:text-xs px-2 py-0.5 rounded-full border ${badgeClass}`}>
                                   {log.status === 'Tepat Waktu' ? '✓ Tepat' : log.status === 'Terlambat' ? `Telat` : log.status}
@@ -2006,9 +2024,14 @@ export default function AdminPage() {
                                         <span className="text-[8px] font-black tracking-tighter">
                                           {new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')}
                                         </span>
+                                        <span className="text-[8px] font-black tracking-tighter text-emerald-600 leading-tight">
+                                          {log.check_out
+                                            ? new Date(log.check_out).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')
+                                            : '--:--'}
+                                        </span>
                                         
                                         {/* Tooltip on Hover */}
-                                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-slate-900 text-white text-left p-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] space-y-1 font-bold">
+                                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-48 bg-slate-900 text-white text-left p-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] space-y-1 font-bold">
                                           <p className="text-orange-400 font-extrabold">Absensi {day} {[
                                             'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
                                             'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
@@ -2035,7 +2058,7 @@ export default function AdminPage() {
                                         <span className="text-[8px] font-black tracking-tighter">Libur</span>
 
                                         {/* Tooltip on Hover */}
-                                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-40 bg-slate-900 text-white text-center py-2 px-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] font-bold">
+                                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-40 bg-slate-900 text-white text-center py-2 px-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] font-bold">
                                           <p className="text-slate-300 font-extrabold">Hari Minggu</p>
                                           <p className="text-slate-400">Libur Akhir Pekan</p>
                                           <p className="text-[8px] text-orange-300 mt-1">💡 Klik untuk input lembur</p>
@@ -2048,7 +2071,7 @@ export default function AdminPage() {
                                         </svg>
 
                                         {/* Tooltip on Hover */}
-                                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-40 bg-slate-900 text-white text-center py-2 px-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] font-bold">
+                                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-40 bg-slate-900 text-white text-center py-2 px-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] font-bold">
                                           <p className="text-red-400 font-extrabold">Tidak Hadir</p>
                                           <p className="text-slate-200">Tidak ada absensi pada hari ini.</p>
                                           <p className="text-[8px] text-orange-300 mt-1">💡 Klik untuk input manual</p>
