@@ -21,6 +21,15 @@ interface AttendanceLog {
   break_end?: string | null;
 }
 
+interface PayslipRecord {
+  id: number;
+  period_month: number;
+  period_year: number;
+  period_label: string;
+  data: Record<string, any>;
+  uploaded_at: string;
+}
+
 export default function Home() {
   // Config state
   const [configured, setConfigured] = useState(false);
@@ -65,6 +74,12 @@ export default function Home() {
 
   // Logout confirmation modal state
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  // Payslip (Slip Gaji) states
+  const [showPayslipList, setShowPayslipList] = useState(false);
+  const [payslips, setPayslips] = useState<PayslipRecord[]>([]);
+  const [selectedPayslip, setSelectedPayslip] = useState<PayslipRecord | null>(null);
+  const [payslipLoading, setPayslipLoading] = useState(false);
 
   // 1. Initial configuration check
   useEffect(() => {
@@ -274,6 +289,25 @@ export default function Home() {
       }
     } catch (err) {
       console.error('Error fetching office settings:', err);
+    }
+  };
+
+  const fetchPayslips = async () => {
+    if (!user) return;
+    setPayslipLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('payslips')
+        .select('id, period_month, period_year, period_label, data, uploaded_at')
+        .eq('user_id', user.id)
+        .order('period_year', { ascending: false })
+        .order('period_month', { ascending: false });
+      if (error) throw error;
+      setPayslips((data || []) as PayslipRecord[]);
+    } catch (err) {
+      console.error('Error fetching payslips:', err);
+    } finally {
+      setPayslipLoading(false);
     }
   };
 
@@ -824,6 +858,29 @@ export default function Home() {
 
       </main>
 
+      {/* TOMBOL LIHAT SLIP GAJI */}
+      <div className="px-6 mb-4 animate-slide-up [animation-delay:200ms]">
+        <button
+          onClick={async () => { await fetchPayslips(); setShowPayslipList(true); }}
+          className="hover-lift w-full flex items-center justify-between bg-white border border-purple-100 hover:border-purple-300 px-5 py-4 rounded-2xl shadow-sm transition-all duration-300 cursor-pointer group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+            </div>
+            <div className="text-left">
+              <p className="font-extrabold text-sm text-gray-900">Lihat Slip Gaji</p>
+              <p className="text-[10px] text-gray-400 font-bold">Rincian gaji bulanan Anda</p>
+            </div>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 text-gray-300 group-hover:text-purple-400 transition-colors">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          </svg>
+        </button>
+      </div>
+
       {/* FOOTER INFO KARYAWAN */}
       <footer className="absolute bottom-4 left-0 right-0 text-center text-xs text-slate-400 font-bold uppercase tracking-wider">
         Sistem Presensi Pabrik v1.0
@@ -910,6 +967,291 @@ export default function Home() {
           </div>
         </div>
       )}
+      {/* PAYSLIP LIST MODAL */}
+      {showPayslipList && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-end justify-center z-50 animate-fade-in" onClick={() => { setShowPayslipList(false); setSelectedPayslip(null); }}>
+          <div className="bg-white w-full max-w-md rounded-t-[2rem] p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            {!selectedPayslip ? (
+              <>
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900">Slip Gaji</h3>
+                    <p className="text-xs text-gray-400 font-bold mt-0.5">Pilih periode untuk melihat rincian</p>
+                  </div>
+                  <button onClick={() => setShowPayslipList(false)} className="p-2 hover:bg-gray-100 rounded-xl transition cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 text-gray-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {payslipLoading ? (
+                  <div className="py-10 flex flex-col items-center">
+                    <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                    <p className="text-sm font-bold text-gray-400">Memuat slip gaji...</p>
+                  </div>
+                ) : payslips.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-purple-200">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                      </svg>
+                    </div>
+                    <p className="font-extrabold text-gray-500 text-sm">Belum ada slip gaji.</p>
+                    <p className="text-xs text-gray-300 mt-1">Hubungi admin jika ada pertanyaan.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {payslips.map((slip) => {
+                      const mNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+                      return (
+                        <button
+                          key={slip.id}
+                          onClick={() => setSelectedPayslip(slip)}
+                          className="w-full flex items-center justify-between p-4 bg-purple-50 hover:bg-purple-100 rounded-2xl border border-purple-100 transition cursor-pointer text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-purple-100 text-purple-700 rounded-xl flex items-center justify-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="font-extrabold text-sm text-gray-900">Slip Gaji {mNames[slip.period_month - 1]} {slip.period_year} <span className="text-purple-600">— {slip.period_label}</span></p>
+                              <p className="text-[10px] text-gray-400 font-bold">
+                                Gaji Bersih: <span className="text-purple-700">
+                                  {slip.data.total_gaji_bersih != null
+                                    ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(slip.data.total_gaji_bersih)
+                                    : '-'}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 text-purple-300">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              /* DETAIL SLIP GAJI - FORMAL DESIGN */
+              (() => {
+                const d = selectedPayslip.data;
+                const mNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+                const fmt = (v: any) => v != null && v !== 0 && v !== '0' ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(v)) : null;
+                const hasPotongan = d.potongan || d.potongan_lain_lain || d.lain_lain || d.potongan_masuk_jam;
+                const upahHariText = (d.upah_per_hari != null && d.total_masuk != null && d.upah_per_hari !== 0 && d.total_masuk !== 0)
+                  ? `${new Intl.NumberFormat('id-ID').format(Number(d.upah_per_hari))} × ${d.total_masuk} hari`
+                  : null;
+                return (
+                  <>
+                    {/* Back Button */}
+                    <button onClick={() => setSelectedPayslip(null)} className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-gray-700 mb-4 cursor-pointer transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                      </svg>
+                      Kembali ke Daftar
+                    </button>
+
+                    {/* ═══ HEADER DOKUMEN FORMAL ═══ */}
+                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 mb-5 text-white">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="text-[9px] font-black tracking-[0.2em] text-slate-400 uppercase">Slip Gaji Karyawan</p>
+                          <p className="text-base font-black text-white mt-0.5">PT. SENNDYT SARUNGTANGAN KREATIF</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Jl. Pasar Turi, Sidomulyo, Bambanglipuro, Bantul</p>
+                        </div>
+                        <div className="text-right">
+                          <div className="bg-white/10 border border-white/20 rounded-xl px-3 py-1.5 text-center">
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Periode</p>
+                            <p className="text-xs font-black text-white">{mNames[selectedPayslip.period_month - 1]} {selectedPayslip.period_year}</p>
+                            <p className="text-[10px] font-extrabold text-orange-300">{selectedPayslip.period_label}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="border-t border-white/10 pt-3 grid grid-cols-3 gap-2">
+                        <div>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Nama</p>
+                          <p className="text-[11px] font-extrabold text-white">{d.nama || profile?.full_name}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">NIK</p>
+                          <p className="text-[11px] font-extrabold text-white">{profile?.nik}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Jabatan</p>
+                          <p className="text-[11px] font-extrabold text-white">{d.jabatan || '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ═══ TABEL RINCIAN GAJI ═══ */}
+                    <div className="border border-gray-200 rounded-2xl overflow-hidden mb-4">
+                      {/* Header Tabel */}
+                      <div className="bg-slate-50 px-4 py-2.5 border-b border-gray-200">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.15em]">Rincian Pendapatan</p>
+                      </div>
+
+                      {/* Gaji Pokok */}
+                      <div className="px-4 py-3 border-b border-gray-100">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-gray-700">Gaji Pokok</span>
+                          <span className="text-xs font-extrabold text-gray-900">{fmt(d.gaji_pokok) || '-'}</span>
+                        </div>
+                        {upahHariText && (
+                          <p className="text-[10px] text-gray-400 font-medium mt-0.5">Rp {upahHariText}</p>
+                        )}
+                      </div>
+
+                      {/* Tunjangan */}
+                      {d.tunjangan != null && d.tunjangan !== 0 && (
+                        <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
+                          <span className="text-xs font-bold text-gray-700">Tunjangan</span>
+                          <span className="text-xs font-extrabold text-gray-900">{fmt(d.tunjangan)}</span>
+                        </div>
+                      )}
+
+                      {/* Premi */}
+                      {d.premi != null && d.premi !== 0 && (
+                        <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
+                          <span className="text-xs font-bold text-gray-700">Premi</span>
+                          <span className="text-xs font-extrabold text-gray-900">{fmt(d.premi)}</span>
+                        </div>
+                      )}
+
+                      {/* Gaji Lembur */}
+                      {d.gaji_lembur != null && d.gaji_lembur !== 0 && (
+                        <div className="px-4 py-3 border-b border-gray-100">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-gray-700">Gaji Lembur</span>
+                            <span className="text-xs font-extrabold text-gray-900">{fmt(d.gaji_lembur)}</span>
+                          </div>
+                          {d.total_lembur_jam != null && d.total_lembur_jam !== 0 && (
+                            <p className="text-[10px] text-gray-400 font-medium mt-0.5">{d.total_lembur_jam} jam × Rp {new Intl.NumberFormat('id-ID').format(Number(d.upah_lembur_per_jam))}/jam</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Upah Borongan */}
+                      {d.upah_borongan != null && d.upah_borongan !== 0 && (
+                        <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
+                          <span className="text-xs font-bold text-gray-700">Upah Borongan</span>
+                          <span className="text-xs font-extrabold text-gray-900">{fmt(d.upah_borongan)}</span>
+                        </div>
+                      )}
+
+                      {/* Over Target */}
+                      {d.over_target != null && d.over_target !== 0 && (
+                        <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
+                          <span className="text-xs font-bold text-gray-700">Over Target</span>
+                          <span className="text-xs font-extrabold text-gray-900">{fmt(d.over_target)}</span>
+                        </div>
+                      )}
+
+                      {/* Subtotal Pendapatan */}
+                      <div className="flex justify-between items-center px-4 py-3 bg-emerald-50 border-b border-emerald-100">
+                        <span className="text-xs font-black text-emerald-800">Jumlah Pendapatan</span>
+                        <span className="text-sm font-black text-emerald-700">{fmt(d.total_gaji_b) || fmt(d.total_gaji_a) || '-'}</span>
+                      </div>
+
+                      {/* POTONGAN */}
+                      {hasPotongan && (
+                        <>
+                          <div className="bg-slate-50 px-4 py-2.5 border-b border-gray-200">
+                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.15em]">Rincian Potongan</p>
+                          </div>
+
+                          {d.potongan != null && d.potongan !== 0 && (
+                            <div className="px-4 py-2.5 border-b border-gray-100">
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold text-gray-700">Potongan Ketidakhadiran</span>
+                                <span className="text-xs font-extrabold text-red-600">{fmt(d.potongan)}</span>
+                              </div>
+                              {d.potongan_masuk_jam != null && d.potongan_masuk_jam !== 0 && (
+                                <p className="text-[10px] text-gray-400 font-medium mt-0.5">{d.potongan_masuk_jam} jam</p>
+                              )}
+                            </div>
+                          )}
+
+                          {d.potongan_lain_lain != null && d.potongan_lain_lain !== 0 && (
+                            <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
+                              <span className="text-xs font-bold text-gray-700">Potongan Lain-lain</span>
+                              <span className="text-xs font-extrabold text-red-600">{fmt(d.potongan_lain_lain)}</span>
+                            </div>
+                          )}
+
+                          {d.lain_lain != null && d.lain_lain !== 0 && (
+                            <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
+                              <span className="text-xs font-bold text-gray-700">Lain-lain</span>
+                              <span className="text-xs font-extrabold text-red-600">{fmt(d.lain_lain)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    {/* ═══ TOTAL GAJI BERSIH ═══ */}
+                    <div className="border-2 border-slate-800 rounded-2xl overflow-hidden mb-5 shadow-md">
+                      <div className="bg-slate-800 px-4 py-2 flex justify-between items-center">
+                        <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.15em]">Total Gaji Bersih yang Diterima</p>
+                      </div>
+                      <div className="bg-white px-4 py-4 flex justify-between items-center">
+                        <div>
+                          <p className="text-[10px] text-gray-400 font-bold">{mNames[selectedPayslip.period_month - 1]} {selectedPayslip.period_year} · {selectedPayslip.period_label}</p>
+                          <p className="text-[10px] text-gray-400 font-medium">{d.nama || profile?.full_name}</p>
+                        </div>
+                        <p className="text-xl font-black text-slate-900">{fmt(d.total_gaji_bersih) || '-'}</p>
+                      </div>
+                    </div>
+
+                    {/* ═══ INFO PEMBAYARAN ═══ */}
+                    {(d.no_rekening || d.no_whatsapp) && (
+                      <div className="border border-gray-200 rounded-2xl overflow-hidden mb-2">
+                        <div className="bg-slate-50 px-4 py-2.5 border-b border-gray-200">
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.15em]">Informasi Pembayaran</p>
+                        </div>
+                        {d.no_rekening && (
+                          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+                            <div className="w-7 h-7 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-3.5 h-3.5 text-blue-500">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">No. Rekening</p>
+                              <p className="text-xs font-extrabold text-gray-800 tracking-wide">{d.no_rekening}</p>
+                            </div>
+                          </div>
+                        )}
+                        {d.no_whatsapp && (
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <div className="w-7 h-7 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-3.5 h-3.5 text-green-500">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">No. WhatsApp</p>
+                              <p className="text-xs font-extrabold text-gray-800">{d.no_whatsapp}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Footer dokumen */}
+                    <p className="text-center text-[9px] text-gray-300 font-bold tracking-widest mt-3 pb-1">— DOKUMEN INI SAH TANPA TANDA TANGAN —</p>
+                  </>
+                );
+              })()
+            )}
+          </div>
+        </div>
+      )}
+
       {/* PROCESSING ATTENDANCE LOADING OVERLAY */}
       {actionLoading && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
