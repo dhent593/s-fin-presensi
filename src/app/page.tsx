@@ -1167,7 +1167,7 @@ export default function Home() {
                           {d.potongan != null && d.potongan !== 0 && (
                             <div className="px-4 py-2.5 border-b border-gray-100">
                               <div className="flex justify-between items-center">
-                                <span className="text-xs font-bold text-gray-700">Potongan Ketidakhadiran</span>
+                                <span className="text-xs font-bold text-gray-700">Potongan Keterlambatan</span>
                                 <span className="text-xs font-extrabold text-red-600">{fmt(d.potongan)}</span>
                               </div>
                               {d.potongan_masuk_jam != null && d.potongan_masuk_jam !== 0 && (
