@@ -81,6 +81,12 @@ export default function Home() {
   const [selectedPayslip, setSelectedPayslip] = useState<PayslipRecord | null>(null);
   const [payslipLoading, setPayslipLoading] = useState(false);
 
+  // Notification & Summary states
+  const [activeMainTab, setActiveMainTab] = useState<'notifications' | 'summary'>('summary');
+  const [activePeriod, setActivePeriod] = useState<1 | 2>(new Date().getDate() <= 15 ? 1 : 2);
+  const [attendanceSummary, setAttendanceSummary] = useState({ totalMasuk: 0, totalTerlambat: 0, totalLemburMenit: 0 });
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
   // 1. Initial configuration check
   useEffect(() => {
     const isConfig = isSupabaseConfigured();
@@ -310,6 +316,81 @@ export default function Home() {
       setPayslipLoading(false);
     }
   };
+
+  const fetchAttendanceSummary = async (period: 1 | 2) => {
+    if (!user) return;
+    setSummaryLoading(true);
+    try {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = today.getMonth();
+      
+      let startDateStr, endDateStr;
+      if (period === 1) {
+        // 1 - 15
+        const startDate = new Date(year, month, 1, 0, 0, 0);
+        const endDate = new Date(year, month, 15, 23, 59, 59);
+        startDateStr = startDate.toISOString();
+        endDateStr = endDate.toISOString();
+      } else {
+        // 16 - End of month
+        const startDate = new Date(year, month, 16, 0, 0, 0);
+        const endDate = new Date(year, month + 1, 0, 23, 59, 59);
+        startDateStr = startDate.toISOString();
+        endDateStr = endDate.toISOString();
+      }
+
+      const { data, error } = await supabase
+        .from('attendance_logs')
+        .select('check_in, check_out, status')
+        .eq('user_id', user.id)
+        .gte('check_in', startDateStr)
+        .lte('check_in', endDateStr);
+
+      if (error) throw error;
+
+      let masuk = 0;
+      let terlambat = 0;
+      let lemburMenit = 0;
+
+      const workEndStr = officeSettings?.work_end_time || '17:00:00';
+      const [endHour, endMin] = workEndStr.split(':').map(Number);
+
+      (data || []).forEach((log: any) => {
+        masuk++;
+        if (log.status === 'Terlambat') terlambat++;
+        
+        if (log.check_out) {
+          const checkOutTime = new Date(log.check_out);
+          const workEnd = new Date(checkOutTime);
+          workEnd.setHours(endHour, endMin, 0, 0);
+          
+          if (checkOutTime > workEnd) {
+            const diffMs = checkOutTime.getTime() - workEnd.getTime();
+            lemburMenit += Math.floor(diffMs / 60000);
+          }
+        }
+      });
+
+      setAttendanceSummary({
+        totalMasuk: masuk,
+        totalTerlambat: terlambat,
+        totalLemburMenit: lemburMenit
+      });
+
+    } catch (err) {
+      console.error('Error fetching summary:', err);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showPayslipList && user) {
+      fetchAttendanceSummary(activePeriod);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePeriod, showPayslipList, user, officeSettings]);
 
   const calculateLateMinutes = (checkInStr: string) => {
     if (!checkInStr || !officeSettings?.work_start_time) return 0;
@@ -624,42 +705,59 @@ export default function Home() {
 
   // EMPLOYEE MOBILE ATTENDANCE DASHBOARD
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-white flex flex-col justify-between relative pb-20 shadow-2xl border-x border-slate-150 animate-fade-in text-slate-800">
-      
-      {/* HEADER */}
-      <header className="bg-gradient-to-b from-orange-500 to-orange-600 text-white px-6 pt-10 pb-14 rounded-b-[3rem] shadow-xl relative overflow-hidden">
-        {/* Glow effects inside header */}
+    <div className="max-w-md mx-auto h-[100dvh] bg-slate-50 flex flex-col relative shadow-2xl border-x border-slate-150 animate-page-enter text-slate-800 overflow-hidden">
+      <div className="shrink-0 bg-orange-500 text-white px-6 pt-8 pb-4 flex justify-between items-center z-30 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-[200px] h-[200px] rounded-full bg-white/5 blur-3xl pointer-events-none"></div>
-        
-        <div className="flex justify-between items-center mb-6 relative z-10">
-          <div>
-            <p className="text-orange-100 text-sm font-semibold">Selamat Bekerja,</p>
-            <h1 className="text-2xl font-black tracking-wide leading-tight">{profile?.full_name || 'Karyawan'}</h1>
-            <p className="text-xs text-orange-200 mt-0.5 font-bold">NIK: {profile?.nik || '-'}</p>
-          </div>
+        <div className="relative z-10">
+          <p className="text-orange-100 text-xs font-semibold">Selamat Bekerja,</p>
+          <h1 className="text-xl font-black tracking-wide leading-tight">{profile?.full_name || 'Karyawan'}</h1>
+          <p className="text-[10px] text-orange-200 mt-0.5 font-bold uppercase">NIK: {profile?.nik || '-'}</p>
+        </div>
+        <div className="flex gap-2 relative z-10">
+          {/* Tombol Notifikasi Slip Gaji */}
+          <button 
+            onClick={() => {
+              fetchPayslips();
+              setShowPayslipList(true);
+            }}
+            title="Notifikasi Slip Gaji"
+            className="bg-white/10 hover:bg-white/20 active:scale-90 p-2.5 rounded-xl transition-all duration-300 shadow-md backdrop-blur-md border border-white/10 cursor-pointer relative"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-orange-500 animate-pulse"></span>
+          </button>
+
           {/* Tombol Keluar */}
           <button 
             onClick={() => setShowLogoutModal(true)}
             title="Keluar Aplikasi"
-            className="bg-white/10 hover:bg-white/20 active:scale-90 p-3 rounded-2xl transition-all duration-300 shadow-md backdrop-blur-md border border-white/10 cursor-pointer"
+            className="bg-white/10 hover:bg-white/20 active:scale-90 p-2.5 rounded-xl transition-all duration-300 shadow-md backdrop-blur-md border border-white/10 cursor-pointer"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
             </svg>
           </button>
         </div>
-        
-        {/* Widget Waktu & Tanggal */}
-        <div className="bg-white/15 backdrop-blur-xl rounded-3xl p-5 text-center border border-white/20 shadow-inner relative z-10">
-          <p className="text-4xl font-black tracking-wider drop-shadow-sm">{timeString}</p>
-          <p className="text-xs font-black text-orange-100 mt-1.5 uppercase tracking-wider">{dateString}</p>
-        </div>
-      </header>
+      </div>
 
-      {/* KONTEN UTAMA */}
-      <main className="px-6 -mt-8 flex-1 relative z-20">
+      {/* SCROLLABLE MAIN CONTENT */}
+      <div className="flex-1 overflow-y-auto scroll-smooth pb-24 relative z-20">
         
-        {/* AREA KARTU ABSENSI UTAMA */}
+        {/* ORANGE CLOCK BACKGROUND EXTENSION */}
+        <div className="bg-gradient-to-b from-orange-500 to-orange-600 px-6 pt-5 pb-16 rounded-b-[3rem] shadow-sm relative overflow-hidden">
+          {/* Widget Waktu & Tanggal */}
+          <div className="bg-white/15 backdrop-blur-xl rounded-3xl p-5 text-center border border-white/20 shadow-inner relative z-10">
+            <p className="text-4xl font-black text-white tracking-wider drop-shadow-sm">{timeString}</p>
+            <p className="text-xs font-black text-orange-100 mt-1.5 uppercase tracking-wider">{dateString}</p>
+          </div>
+        </div>
+
+        {/* KONTEN UTAMA - KARTU PUTIH */}
+        <main className="px-6 -mt-10 relative z-20">
+          
+          {/* AREA KARTU ABSENSI UTAMA */}
         <div className="bg-white rounded-[2rem] p-6 shadow-xl border border-slate-100 mb-6 text-center animate-slide-up">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">TEKAN TOMBOL DI BAWAH UNTUK ABSEN</p>
           
@@ -880,6 +978,7 @@ export default function Home() {
           </svg>
         </button>
       </div>
+      </div>
 
       {/* FOOTER INFO KARYAWAN */}
       <footer className="absolute bottom-4 left-0 right-0 text-center text-xs text-slate-400 font-bold uppercase tracking-wider">
@@ -920,7 +1019,7 @@ export default function Home() {
       {/* CONFIRM ATTENDANCE MODAL */}
       {attendanceConfirm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 max-w-xs w-full border border-slate-100 shadow-2xl animate-scale-up text-center text-slate-800">
+          <div className="bg-white rounded-3xl p-8 shadow-2xl text-center w-full animate-scale-up border border-slate-100 relative overflow-hidden text-slate-800">
             <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-md shadow-orange-500/10">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-8 h-8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -970,14 +1069,11 @@ export default function Home() {
       {/* PAYSLIP LIST MODAL */}
       {showPayslipList && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-end justify-center z-50 animate-fade-in" onClick={() => { setShowPayslipList(false); setSelectedPayslip(null); }}>
-          <div className="bg-white w-full max-w-md rounded-t-[2rem] p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-md rounded-t-[2rem] p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-bottom-sheet" onClick={(e) => e.stopPropagation()}>
             {!selectedPayslip ? (
               <>
                 <div className="flex items-center justify-between mb-5">
-                  <div>
-                    <h3 className="text-xl font-black text-gray-900">Slip Gaji</h3>
-                    <p className="text-xs text-gray-400 font-bold mt-0.5">Pilih periode untuk melihat rincian</p>
-                  </div>
+                  <h3 className="text-xl font-black text-gray-900">Pusat Informasi</h3>
                   <button onClick={() => setShowPayslipList(false)} className="p-2 hover:bg-gray-100 rounded-xl transition cursor-pointer">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 text-gray-400">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -985,54 +1081,122 @@ export default function Home() {
                   </button>
                 </div>
 
-                {payslipLoading ? (
-                  <div className="py-10 flex flex-col items-center">
-                    <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <p className="text-sm font-bold text-gray-400">Memuat slip gaji...</p>
-                  </div>
-                ) : payslips.length === 0 ? (
-                  <div className="py-12 text-center">
-                    <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-purple-200">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                {/* Main Tabs */}
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl mb-5">
+                  <button 
+                    onClick={() => setActiveMainTab('notifications')}
+                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${activeMainTab === 'notifications' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Notifikasi
+                  </button>
+                  <button 
+                    onClick={() => setActiveMainTab('summary')}
+                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${activeMainTab === 'summary' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Absensi & Gaji
+                  </button>
+                </div>
+
+                {activeMainTab === 'notifications' ? (
+                  <div className="py-8 text-center animate-tab-enter">
+                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-slate-300">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
                       </svg>
                     </div>
-                    <p className="font-extrabold text-gray-500 text-sm">Belum ada slip gaji.</p>
-                    <p className="text-xs text-gray-300 mt-1">Hubungi admin jika ada pertanyaan.</p>
+                    <p className="font-extrabold text-slate-500 text-sm">Belum ada notifikasi baru.</p>
+                    <p className="text-xs text-slate-400 mt-1">Pengumuman HR atau peringatan akan muncul di sini.</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {payslips.map((slip) => {
-                      const mNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-                      return (
-                        <button
-                          key={slip.id}
-                          onClick={() => setSelectedPayslip(slip)}
-                          className="w-full flex items-center justify-between p-4 bg-purple-50 hover:bg-purple-100 rounded-2xl border border-purple-100 transition cursor-pointer text-left"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-purple-100 text-purple-700 rounded-xl flex items-center justify-center">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                              </svg>
-                            </div>
-                            <div>
-                              <p className="font-extrabold text-sm text-gray-900">Slip Gaji {mNames[slip.period_month - 1]} {slip.period_year} <span className="text-purple-600">— {slip.period_label}</span></p>
-                              <p className="text-[10px] text-gray-400 font-bold">
-                                Gaji Bersih: <span className="text-purple-700">
-                                  {slip.data.total_gaji_bersih != null
-                                    ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(slip.data.total_gaji_bersih)
-                                    : '-'}
-                                </span>
-                              </p>
-                            </div>
+                  <div className="animate-tab-enter">
+                    {/* Period Tabs */}
+                    <div className="flex gap-2 mb-4">
+                      <button 
+                        onClick={() => setActivePeriod(1)}
+                        className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all border cursor-pointer ${activePeriod === 1 ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:bg-slate-50'}`}
+                      >
+                        Tgl 1 - 15
+                      </button>
+                      <button 
+                        onClick={() => setActivePeriod(2)}
+                        className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all border cursor-pointer ${activePeriod === 2 ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:bg-slate-50'}`}
+                      >
+                        Tgl 16 - Akhir
+                      </button>
+                    </div>
+
+                    {/* Attendance Summary */}
+                    <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-2xl p-4 mb-5 shadow-inner">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Rincian Absensi Periode {activePeriod}</h4>
+                      {summaryLoading ? (
+                        <div className="py-4 text-center">
+                          <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="bg-white p-3 rounded-xl border border-slate-100 text-center shadow-sm">
+                            <p className="text-xl font-black text-slate-800">{attendanceSummary.totalMasuk}</p>
+                            <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">Hari Kerja</p>
                           </div>
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 text-purple-300">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                          </svg>
-                        </button>
-                      );
-                    })}
+                          <div className="bg-white p-3 rounded-xl border border-red-50 text-center shadow-sm">
+                            <p className="text-xl font-black text-red-500">{attendanceSummary.totalTerlambat}</p>
+                            <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">Terlambat</p>
+                          </div>
+                          <div className="bg-white p-3 rounded-xl border border-blue-50 text-center shadow-sm">
+                            <p className="text-xl font-black text-blue-500 flex items-baseline justify-center gap-0.5">
+                              {Math.floor(attendanceSummary.totalLemburMenit / 60)}<span className="text-xs font-bold text-blue-300">h</span> {attendanceSummary.totalLemburMenit % 60}<span className="text-xs font-bold text-blue-300">m</span>
+                            </p>
+                            <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">Lembur</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Payslips */}
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Slip Gaji Terkait</h4>
+                    {payslipLoading ? (
+                      <div className="py-8 flex flex-col items-center">
+                        <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                      </div>
+                    ) : payslips.length === 0 ? (
+                      <div className="py-8 text-center bg-slate-50 rounded-2xl border border-slate-100">
+                        <p className="font-extrabold text-slate-400 text-xs">Belum ada slip gaji.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {payslips.map((slip) => {
+                          const mNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+                          return (
+                            <button
+                              key={slip.id}
+                              onClick={() => setSelectedPayslip(slip)}
+                              className="w-full flex items-center justify-between p-4 bg-purple-50 hover:bg-purple-100 rounded-2xl border border-purple-100 transition cursor-pointer text-left"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-purple-100 text-purple-700 rounded-xl flex items-center justify-center">
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                                  </svg>
+                                </div>
+                                <div>
+                                  <p className="font-extrabold text-sm text-gray-900">Slip Gaji {mNames[slip.period_month - 1]} {slip.period_year} <span className="text-purple-600">— {slip.period_label}</span></p>
+                                  <p className="text-[10px] text-gray-400 font-bold">
+                                    Gaji Bersih: <span className="text-purple-700">
+                                      {slip.data.total_gaji_bersih != null
+                                        ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(slip.data.total_gaji_bersih)
+                                        : '-'}
+                                    </span>
+                                  </p>
+                                </div>
+                              </div>
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 text-purple-300">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                              </svg>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -1042,7 +1206,7 @@ export default function Home() {
                 const d = selectedPayslip.data;
                 const mNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
                 const fmt = (v: any) => v != null && v !== 0 && v !== '0' ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(v)) : null;
-                const hasPotongan = d.potongan || d.potongan_lain_lain || d.lain_lain || d.potongan_masuk_jam;
+                const hasPotongan = d.potongan || d.potongan_lain_lain || d.potongan_masuk_jam;
                 const upahHariText = (d.upah_per_hari != null && d.total_masuk != null && d.upah_per_hari !== 0 && d.total_masuk !== 0)
                   ? `${new Intl.NumberFormat('id-ID').format(Number(d.upah_per_hari))} × ${d.total_masuk} hari`
                   : null;
@@ -1095,14 +1259,20 @@ export default function Home() {
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.15em]">Rincian Pendapatan</p>
                       </div>
 
-                      {/* Gaji Pokok */}
+                      {/* Gaji Pokok & Upah Harian */}
                       <div className="px-4 py-3 border-b border-gray-100">
                         <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold text-gray-700">Gaji Pokok</span>
-                          <span className="text-xs font-extrabold text-gray-900">{fmt(d.gaji_pokok) || '-'}</span>
+                          <span className="text-[10px] font-bold text-gray-500">Gaji Pokok (Info)</span>
+                          <span className="text-[10px] font-bold text-gray-400">{fmt(d.gaji_pokok) || '-'}</span>
                         </div>
                         {upahHariText && (
-                          <p className="text-[10px] text-gray-400 font-medium mt-0.5">Rp {upahHariText}</p>
+                          <div className="flex justify-between items-center mt-2">
+                            <div>
+                              <span className="text-xs font-bold text-gray-700 block">Upah Kehadiran</span>
+                              <span className="text-[10px] text-gray-400 font-medium mt-0.5">Rp {upahHariText}</span>
+                            </div>
+                            <span className="text-xs font-extrabold text-gray-900">{fmt(d.upah_per_hari * d.total_masuk)}</span>
+                          </div>
                         )}
                       </div>
 
@@ -1151,6 +1321,14 @@ export default function Home() {
                         </div>
                       )}
 
+                      {/* Lain-lain (Pendapatan Tambahan) */}
+                      {d.lain_lain != null && d.lain_lain !== 0 && (
+                        <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
+                          <span className="text-xs font-bold text-gray-700">Lain-lain</span>
+                          <span className="text-xs font-extrabold text-gray-900">{fmt(d.lain_lain)}</span>
+                        </div>
+                      )}
+
                       {/* Subtotal Pendapatan */}
                       <div className="flex justify-between items-center px-4 py-3 bg-emerald-50 border-b border-emerald-100">
                         <span className="text-xs font-black text-emerald-800">Jumlah Pendapatan</span>
@@ -1180,13 +1358,6 @@ export default function Home() {
                             <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
                               <span className="text-xs font-bold text-gray-700">Potongan Lain-lain</span>
                               <span className="text-xs font-extrabold text-red-600">{fmt(d.potongan_lain_lain)}</span>
-                            </div>
-                          )}
-
-                          {d.lain_lain != null && d.lain_lain !== 0 && (
-                            <div className="flex justify-between items-center px-4 py-2.5 border-b border-gray-100">
-                              <span className="text-xs font-bold text-gray-700">Lain-lain</span>
-                              <span className="text-xs font-extrabold text-red-600">{fmt(d.lain_lain)}</span>
                             </div>
                           )}
                         </>
