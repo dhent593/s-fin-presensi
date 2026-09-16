@@ -67,7 +67,9 @@ export default function Home() {
   // Office settings (for lateness + break time calculation)
   const [officeSettings, setOfficeSettings] = useState<{
     work_start_time: string;
+    work_end_time: string;
     saturday_work_start_time: string;
+    saturday_work_end_time: string;
     break_start_time: string;
     break_end_time: string;
   } | null>(null);
@@ -289,7 +291,7 @@ export default function Home() {
     try {
       const { data, error } = await supabase
         .from('geofence_settings')
-        .select('work_start_time, saturday_work_start_time, break_start_time, break_end_time')
+        .select('work_start_time, work_end_time, saturday_work_start_time, saturday_work_end_time, break_start_time, break_end_time')
         .eq('id', 1)
         .single();
       if (!error && data) {
