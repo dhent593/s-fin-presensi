@@ -52,8 +52,8 @@ export default function AdminPage() {
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  // Tabs navigation: 'dashboard' | 'employees' | 'recap' | 'geofencing' | 'payslip'
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'employees' | 'recap' | 'geofencing' | 'payslip'>('dashboard');
+  // Tabs navigation
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'employees' | 'recap' | 'geofencing' | 'payslip' | 'notifications'>('dashboard');
 
   // Mobile sidebar state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -129,6 +129,15 @@ export default function AdminPage() {
   // Date-range for recap summary (day numbers within the selected month)
   const [recapStartDay, setRecapStartDay] = useState<number>(1);
   const [recapEndDay, setRecapEndDay] = useState<number>(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate());
+
+  // Notifications states
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [newNotifTitle, setNewNotifTitle] = useState('');
+  const [newNotifMessage, setNewNotifMessage] = useState('');
+  const [newNotifType, setNewNotifType] = useState<'info'|'warning'|'success'>('info');
+  const [newNotifTarget, setNewNotifTarget] = useState<string>(''); // empty string means broadcast
+  const [notifFeedback, setNotifFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   // Manual Attendance Correction states
   const [editingCell, setEditingCell] = useState<{
@@ -248,23 +257,66 @@ export default function AdminPage() {
       setLogs(todayLogs);
 
       // 4. Calculate Stats
-      const uniqueCheckedIn = new Set(todayLogs.map(l => l.user_id)).size;
-      const lateCount = todayLogs.filter(l => l.status === 'Terlambat').length;
-      const absentCount = Math.max(0, totalEmployeesCount - uniqueCheckedIn);
-
+      const presentIds = new Set(todayLogs.map(l => l.user_id));
+      const latesCount = todayLogs.filter(l => l.status === 'Terlambat').length;
+      
       setStats({
         totalEmployees: totalEmployeesCount,
-        checkedIn: uniqueCheckedIn,
-        late: lateCount,
-        absent: absentCount
+        checkedIn: presentIds.size,
+        late: latesCount,
+        absent: totalEmployeesCount - presentIds.size
       });
 
       // Fetch recap too
       loadMonthlyRecap(recapMonth, recapYear);
 
+      // 5. Fetch Notifications
+      loadNotifications();
+
     } catch (err) {
-      console.error('Error loading data:', err);
+      console.error('Error loading dashboard data:', err);
     }
+  };
+
+  const loadNotifications = async () => {
+    setNotifLoading(true);
+    const { data } = await supabase
+      .from('notifications')
+      .select('*, profiles(full_name)')
+      .order('created_at', { ascending: false });
+    if (data) setNotifications(data);
+    setNotifLoading(false);
+  };
+
+  const handleSaveNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNotifTitle || !newNotifMessage) return;
+
+    const payload = {
+      title: newNotifTitle,
+      message: newNotifMessage,
+      type: newNotifType,
+      target_user_id: newNotifTarget || null,
+      is_active: true
+    };
+
+    const { error } = await supabase.from('notifications').insert([payload]);
+    if (error) {
+      setNotifFeedback({ success: false, message: 'Gagal membuat notifikasi.' });
+    } else {
+      setNotifFeedback({ success: true, message: 'Notifikasi berhasil dibuat!' });
+      setNewNotifTitle('');
+      setNewNotifMessage('');
+      setNewNotifTarget('');
+      loadNotifications();
+    }
+    setTimeout(() => setNotifFeedback(null), 3000);
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    if (!confirm('Hapus notifikasi ini?')) return;
+    await supabase.from('notifications').delete().eq('id', id);
+    loadNotifications();
   };
 
   // Load Monthly Recap Logs
@@ -1305,6 +1357,8 @@ export default function AdminPage() {
         <div className="text-center animate-fade-in">
           <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-5 shadow-lg shadow-orange-500/10"></div>
           <p className="text-slate-800 font-extrabold text-xl tracking-wide">Memuat Panel Admin...</p>
+
+
         </div>
       </div>
     );
@@ -1432,6 +1486,24 @@ export default function AdminPage() {
               </svg>
               Kelola Slip Gaji
             </button>
+
+            <button
+              onClick={() => { setActiveTab('notifications'); loadNotifications(); closeMobileSidebar(); }}
+              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
+                transition-all duration-200 ease-out ${
+                activeTab === 'notifications'
+                  ? 'bg-orange-50 text-orange-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'notifications' ? 'text-orange-500 scale-110' : ''
+                }`}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0M3.124 7.5A8.969 8.969 0 015.292 3m13.416 0a8.969 8.969 0 012.168 4.5" />
+              </svg>
+              Kelola Notifikasi
+            </button>
           </nav>
         </div>
  
@@ -1480,6 +1552,7 @@ export default function AdminPage() {
               {activeTab === 'recap' && 'Rekap Bulanan'}
               {activeTab === 'geofencing' && 'Pengaturan Kantor'}
               {activeTab === 'payslip' && 'Kelola Slip Gaji'}
+              {activeTab === 'notifications' && 'Kelola Notifikasi'}
             </h2>
           </div>
           <div className="text-xs md:text-sm font-bold text-gray-500 bg-gray-50 border px-3 md:px-4 py-2 rounded-xl shrink-0">
@@ -2641,6 +2714,88 @@ export default function AdminPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 6: KELOLA NOTIFIKASI */}
+        {activeTab === 'notifications' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <h3 className="text-sm font-black text-gray-800 mb-4 uppercase tracking-widest">Buat Notifikasi Baru</h3>
+              
+              {notifFeedback && (
+                <div className={`p-4 rounded-xl mb-4 text-sm font-bold ${notifFeedback.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                  {notifFeedback.message}
+                </div>
+              )}
+
+              <form onSubmit={handleSaveNotification} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Judul</label>
+                    <input type="text" value={newNotifTitle} onChange={e => setNewNotifTitle(e.target.value)} required className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500" placeholder="Misal: Info Libur Lebaran" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Tipe</label>
+                    <select value={newNotifType} onChange={e => setNewNotifType(e.target.value as any)} className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500">
+                      <option value="info">Info (Biru)</option>
+                      <option value="warning">Peringatan (Kuning)</option>
+                      <option value="success">Sukses (Hijau)</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Isi Pesan</label>
+                  <textarea value={newNotifMessage} onChange={e => setNewNotifMessage(e.target.value)} required rows={3} className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500" placeholder="Ketik isi pengumuman..."></textarea>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Target Penerima (Kosongkan jika Broadcast)</label>
+                  <select value={newNotifTarget} onChange={e => setNewNotifTarget(e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500">
+                    <option value="">-- Semua Karyawan (Broadcast) --</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.full_name} ({emp.nik})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-end">
+                  <button type="submit" disabled={!newNotifTitle || !newNotifMessage} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl transition duration-200 shadow-lg shadow-orange-500/30 disabled:opacity-50">
+                    Kirim Notifikasi
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Daftar Notifikasi Aktif</h3>
+                <button onClick={loadNotifications} className="text-orange-500 hover:bg-orange-50 p-2 rounded-lg transition">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className={`w-5 h-5 ${notifLoading ? 'animate-spin' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {notifications.length === 0 ? (
+                  <p className="text-center py-8 text-sm text-gray-400 font-bold">Belum ada notifikasi.</p>
+                ) : (
+                  notifications.map(n => (
+                    <div key={n.id} className="border border-slate-100 p-4 rounded-xl flex items-center justify-between gap-4 hover:shadow-md transition">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${n.type === 'info' ? 'bg-blue-100 text-blue-700' : n.type === 'warning' ? 'bg-yellow-100 text-yellow-700' : 'bg-emerald-100 text-emerald-700'}`}>{n.type}</span>
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${n.target_user_id ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'}`}>{n.target_user_id ? `PRIVATE: ${n.profiles?.full_name}` : 'BROADCAST'}</span>
+                          <span className="text-[10px] text-gray-400 font-bold">{new Date(n.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-gray-800">{n.title}</h4>
+                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{n.message}</p>
+                      </div>
+                      <button onClick={() => handleDeleteNotification(n.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition" title="Hapus Notifikasi">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         )}
 

@@ -86,6 +86,8 @@ export default function Home() {
   const [activePeriod, setActivePeriod] = useState<1 | 2>(new Date().getDate() <= 15 ? 1 : 2);
   const [attendanceSummary, setAttendanceSummary] = useState({ totalMasuk: 0, totalTerlambat: 0, totalLemburMenit: 0 });
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
 
   // 1. Initial configuration check
   useEffect(() => {
@@ -385,9 +387,29 @@ export default function Home() {
     }
   };
 
+  const fetchNotifications = async () => {
+    if (!user) return;
+    setNotifLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        // Policies automatically filter `is_active=true and (target_user_id is null or auth.uid)`
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        setNotifications(data);
+      }
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+    } finally {
+      setNotifLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (showPayslipList && user) {
       fetchAttendanceSummary(activePeriod);
+      fetchNotifications();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePeriod, showPayslipList, user, officeSettings]);
@@ -1098,14 +1120,36 @@ export default function Home() {
                 </div>
 
                 {activeMainTab === 'notifications' ? (
-                  <div className="py-8 text-center animate-tab-enter">
-                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-slate-300">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                      </svg>
-                    </div>
-                    <p className="font-extrabold text-slate-500 text-sm">Belum ada notifikasi baru.</p>
-                    <p className="text-xs text-slate-400 mt-1">Pengumuman HR atau peringatan akan muncul di sini.</p>
+                  <div className="py-2 animate-tab-enter">
+                    {notifLoading ? (
+                      <div className="text-center py-8">
+                        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                        <p className="text-xs font-bold text-slate-400">Memuat Notifikasi...</p>
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-slate-300">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                          </svg>
+                        </div>
+                        <p className="font-extrabold text-slate-500 text-sm">Belum ada notifikasi baru.</p>
+                        <p className="text-xs text-slate-400 mt-1">Pengumuman HR atau peringatan akan muncul di sini.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                        {notifications.map(n => (
+                          <div key={n.id} className={`p-4 rounded-2xl border shadow-sm ${n.type === 'info' ? 'bg-blue-50/50 border-blue-100' : n.type === 'warning' ? 'bg-orange-50/50 border-orange-100' : 'bg-emerald-50/50 border-emerald-100'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${n.type === 'info' ? 'bg-blue-100 text-blue-700' : n.type === 'warning' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>{n.type === 'warning' ? 'Peringatan' : n.type}</span>
+                              <span className="text-[10px] text-gray-400 font-bold">{new Date(n.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</span>
+                            </div>
+                            <h4 className="text-sm font-black text-slate-800 mb-1">{n.title}</h4>
+                            <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{n.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="animate-tab-enter">

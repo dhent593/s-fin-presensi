@@ -130,6 +130,33 @@ create policy "Admins can perform any operation on logs"
         (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
     );
 
+-- 4. Notifications Table (Information Center)
+create table public.notifications (
+    id uuid default gen_random_uuid() primary key,
+    created_at timestamptz default now() not null,
+    title text not null,
+    message text not null,
+    type text default 'info', -- 'info', 'warning', 'success'
+    target_user_id uuid references public.profiles(id) on delete cascade null, -- null = broadcast to all
+    is_active boolean default true
+);
+alter table public.notifications enable row level security;
+
+-- Employees can read active broadcasts OR notifications specifically for them
+create policy "Employees can read their notifications"
+    on public.notifications for select
+    using (
+        is_active = true and (target_user_id is null or target_user_id = auth.uid())
+    );
+
+-- Admins can do anything
+create policy "Admins have full access to notifications"
+    on public.notifications for all
+    using (
+        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+    );
+
+
 
 -- 4. User Signup Trigger (auth.users -> public.profiles)
 create or replace function public.handle_new_user()
