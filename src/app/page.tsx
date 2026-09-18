@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { supabase, isSupabaseConfigured, saveSupabaseConfig, clearSupabaseConfig } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 
@@ -42,6 +42,8 @@ interface PayslipRecord {
 }
 
 export default function Home() {
+  const [isPending, startTransition] = useTransition();
+
   // Config state
   const [configured, setConfigured] = useState(false);
   const [dbUrl, setDbUrl] = useState('');
@@ -1177,10 +1179,10 @@ export default function Home() {
       {/* PAYSLIP LIST MODAL */}
       {showPayslipList && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-end justify-center z-50 animate-fade-in" onClick={() => { setShowPayslipList(false); setSelectedPayslip(null); }}>
-          <div className="bg-white w-full max-w-md rounded-t-[2rem] p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-bottom-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-md rounded-t-[2rem] p-6 h-[85vh] max-h-[750px] flex flex-col shadow-2xl animate-bottom-sheet" onClick={(e) => e.stopPropagation()}>
             {!selectedPayslip ? (
               <>
-                <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center justify-between mb-5 shrink-0">
                   <h3 className="text-xl font-black text-gray-900">Pusat Informasi</h3>
                   <button onClick={() => setShowPayslipList(false)} className="p-2 hover:bg-gray-100 rounded-xl transition cursor-pointer">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 text-gray-400">
@@ -1190,61 +1192,62 @@ export default function Home() {
                 </div>
 
                 {/* Main Tabs */}
-                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl mb-5 overflow-x-auto">
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl mb-5 overflow-x-auto shrink-0">
                   <button 
-                    onClick={() => setActiveMainTab('notifications')}
+                    onClick={() => startTransition(() => setActiveMainTab('notifications'))}
                     className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'notifications' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Notifikasi
                   </button>
                   <button 
-                    onClick={() => setActiveMainTab('summary')}
+                    onClick={() => startTransition(() => setActiveMainTab('summary'))}
                     className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'summary' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Absensi & Gaji
                   </button>
                   <button 
-                    onClick={() => { setActiveMainTab('leave'); fetchLeaveHistory(); }}
+                    onClick={() => { startTransition(() => { setActiveMainTab('leave'); }); fetchLeaveHistory(); }}
                     className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'leave' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Izin / Cuti
                   </button>
                 </div>
 
-                {activeMainTab === 'notifications' ? (
-                  <div className="py-2 animate-tab-enter">
-                    {notifLoading ? (
-                      <div className="text-center py-8">
-                        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                        <p className="text-xs font-bold text-slate-400">Memuat Notifikasi...</p>
-                      </div>
-                    ) : notifications.length === 0 ? (
-                      <div className="py-8 text-center">
-                        <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-slate-300">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                          </svg>
+                <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar pr-2">
+                  {activeMainTab === 'notifications' ? (
+                    <div className="py-2 animate-tab-soft">
+                      {notifLoading ? (
+                        <div className="text-center py-8">
+                          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                          <p className="text-xs font-bold text-slate-400">Memuat Notifikasi...</p>
                         </div>
-                        <p className="font-extrabold text-slate-500 text-sm">Belum ada notifikasi baru.</p>
-                        <p className="text-xs text-slate-400 mt-1">Pengumuman HR atau peringatan akan muncul di sini.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                        {notifications.map(n => (
-                          <div key={n.id} className={`p-4 rounded-2xl border shadow-sm ${n.type === 'info' ? 'bg-blue-50/50 border-blue-100' : n.type === 'warning' ? 'bg-orange-50/50 border-orange-100' : 'bg-emerald-50/50 border-emerald-100'}`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${n.type === 'info' ? 'bg-blue-100 text-blue-700' : n.type === 'warning' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>{n.type === 'warning' ? 'Peringatan' : n.type}</span>
-                              <span className="text-[10px] text-gray-400 font-bold">{new Date(n.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</span>
-                            </div>
-                            <h4 className="text-sm font-black text-slate-800 mb-1">{n.title}</h4>
-                            <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{n.message}</p>
+                      ) : notifications.length === 0 ? (
+                        <div className="py-8 text-center">
+                          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-slate-300">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                            </svg>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                          <p className="font-extrabold text-slate-500 text-sm">Belum ada notifikasi baru.</p>
+                          <p className="text-xs text-slate-400 mt-1">Pengumuman HR atau peringatan akan muncul di sini.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 pb-4">
+                          {notifications.map(n => (
+                            <div key={n.id} className={`p-4 rounded-2xl border shadow-sm ${n.type === 'info' ? 'bg-blue-50/50 border-blue-100' : n.type === 'warning' ? 'bg-orange-50/50 border-orange-100' : 'bg-emerald-50/50 border-emerald-100'}`}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${n.type === 'info' ? 'bg-blue-100 text-blue-700' : n.type === 'warning' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>{n.type === 'warning' ? 'Peringatan' : n.type}</span>
+                                <span className="text-[10px] text-gray-400 font-bold">{new Date(n.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</span>
+                              </div>
+                              <h4 className="text-sm font-black text-slate-800 mb-1">{n.title}</h4>
+                              <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{n.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                 ) : activeMainTab === 'summary' ? (
-                  <div className="animate-tab-enter">
+                  <div className="py-2 animate-tab-soft">
                     {/* Period Tabs */}
                     <div className="flex gap-2 mb-4">
                       <button 
@@ -1335,7 +1338,7 @@ export default function Home() {
                     )}
                   </div>
                 ) : activeMainTab === 'leave' ? (
-                  <div className="animate-tab-enter">
+                  <div className="py-2 animate-tab-soft">
                     
                     {/* Feedback Alert */}
                     {leaveFeedback && (
@@ -1442,6 +1445,7 @@ export default function Home() {
 
                   </div>
                 ) : null}
+              </div>
               </>
             ) : (
               /* DETAIL SLIP GAJI - FORMAL DESIGN */

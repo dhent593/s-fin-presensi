@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useTransition } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient, User } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
@@ -62,6 +62,7 @@ interface LeaveRequest {
 }
 
 export default function AdminPage() {
+  const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -462,7 +463,6 @@ export default function AdminPage() {
     loadNotifications();
   };
 
-  // Load Monthly Recap Logs
   const loadMonthlyRecap = async (month: number, year: number) => {
     setRecapLoading(true);
     try {
@@ -477,10 +477,13 @@ export default function AdminPage() {
         .order('check_in', { ascending: true });
 
       if (error) throw error;
-      setRecapLogs((data || []) as unknown as AttendanceLog[]);
+      
+      startTransition(() => {
+        setRecapLogs((data || []) as unknown as AttendanceLog[]);
+        setRecapLoading(false);
+      });
     } catch (err) {
       console.error('Error loading monthly recap:', err);
-    } finally {
       setRecapLoading(false);
     }
   };
@@ -1576,7 +1579,7 @@ export default function AdminPage() {
             </button>
 
             <button
-              onClick={() => { setActiveTab('recap'); closeMobileSidebar(); }}
+              onClick={() => { startTransition(() => { setActiveTab('recap'); }); closeMobileSidebar(); }}
               className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
                 transition-all duration-200 ease-out ${
                 activeTab === 'recap'
@@ -2231,11 +2234,13 @@ export default function AdminPage() {
                     value={recapMonth}
                     onChange={(e) => {
                       const newMonth = Number(e.target.value);
-                      setRecapMonth(newMonth);
-                      // Reset range to full month
-                      const lastDay = new Date(recapYear, newMonth + 1, 0).getDate();
-                      setRecapStartDay(1);
-                      setRecapEndDay(lastDay);
+                      startTransition(() => {
+                        setRecapMonth(newMonth);
+                        // Reset range to full month
+                        const lastDay = new Date(recapYear, newMonth + 1, 0).getDate();
+                        setRecapStartDay(1);
+                        setRecapEndDay(lastDay);
+                      });
                     }}
                     className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
                   >
@@ -2251,10 +2256,12 @@ export default function AdminPage() {
                     value={recapYear}
                     onChange={(e) => {
                       const newYear = Number(e.target.value);
-                      setRecapYear(newYear);
-                      const lastDay = new Date(newYear, recapMonth + 1, 0).getDate();
-                      setRecapStartDay(1);
-                      setRecapEndDay(lastDay);
+                      startTransition(() => {
+                        setRecapYear(newYear);
+                        const lastDay = new Date(newYear, recapMonth + 1, 0).getDate();
+                        setRecapStartDay(1);
+                        setRecapEndDay(lastDay);
+                      });
                     }}
                     className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
                   >
@@ -2376,7 +2383,7 @@ export default function AdminPage() {
 
             {/* TABEL GRID BULANAN */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 overflow-hidden flex-1 flex flex-col">
-              {recapLoading ? (
+              {(recapLoading || isPending) ? (
                 <div className="py-20 flex flex-col items-center justify-center flex-1">
                   <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4"></div>
                   <p className="text-sm font-bold text-gray-500">Memuat data rekap...</p>
