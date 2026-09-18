@@ -559,6 +559,8 @@ export default function Home() {
 
     setLoading(true);
     setAuthError('');
+    // Allow browser to paint the loading state before blocking main thread
+    await new Promise(r => setTimeout(r, 50));
 
     try {
       // Map NIK to internal email, or use directly if it contains '@' (admin email)
@@ -699,7 +701,12 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="text-center animate-fade-in">
-          <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-5 shadow-lg shadow-orange-500/10"></div>
+          <div className="relative w-16 h-16 mx-auto mb-5">
+            {/* Static shadow ring */}
+            <div className="absolute inset-0 rounded-full shadow-lg shadow-orange-500/20"></div>
+            {/* Hardware accelerated spinning ring */}
+            <div className="absolute inset-0 border-4 border-orange-500 border-t-transparent rounded-full animate-spin hw-accelerate"></div>
+          </div>
           <p className="text-slate-800 font-extrabold text-xl tracking-wide">Memuat aplikasi...</p>
         </div>
       </div>
@@ -1195,22 +1202,35 @@ export default function Home() {
                 </div>
 
                 {/* Main Tabs */}
-                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl mb-5 overflow-x-auto shrink-0">
+                <div className="relative flex p-1 bg-slate-100 rounded-2xl mb-5 shrink-0 z-0">
+                  {/* Sliding Background Indicator */}
+                  <div 
+                    className="absolute top-1 bottom-1 bg-white shadow-sm rounded-xl ease-spring z-0 hw-accelerate"
+                    style={{ 
+                      width: 'calc(33.333% - 2.66px)',
+                      transition: 'transform 0.4s',
+                      transform: activeMainTab === 'notifications' 
+                        ? 'translateX(0)' 
+                        : activeMainTab === 'summary' 
+                        ? 'translateX(100%)' 
+                        : 'translateX(200%)' 
+                    }} 
+                  />
                   <button 
                     onClick={() => startTransition(() => setActiveMainTab('notifications'))}
-                    className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'notifications' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`relative z-10 flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap ${activeMainTab === 'notifications' ? 'text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Notifikasi
                   </button>
                   <button 
                     onClick={() => startTransition(() => setActiveMainTab('summary'))}
-                    className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'summary' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`relative z-10 flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap ${activeMainTab === 'summary' ? 'text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Absensi & Gaji
                   </button>
                   <button 
                     onClick={() => { startTransition(() => { setActiveMainTab('leave'); }); fetchLeaveHistory(); }}
-                    className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'leave' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`relative z-10 flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap ${activeMainTab === 'leave' ? 'text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Izin / Cuti
                   </button>
