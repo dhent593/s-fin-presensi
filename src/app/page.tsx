@@ -863,7 +863,7 @@ export default function Home() {
       </div>
 
       {/* SCROLLABLE MAIN CONTENT */}
-      <div className="flex-1 overflow-y-auto scroll-smooth pb-24 relative z-20">
+      <div className="flex-1 flex flex-col min-h-0 relative z-20">
         
         {/* ORANGE CLOCK BACKGROUND EXTENSION */}
         <div className="bg-gradient-to-b from-orange-500 to-orange-600 px-6 pt-5 pb-16 rounded-b-[3rem] shadow-sm relative overflow-hidden">
@@ -875,8 +875,9 @@ export default function Home() {
         </div>
 
         {/* KONTEN UTAMA - KARTU PUTIH */}
-        <main className="px-6 -mt-10 relative z-20">
+        <main className="flex-1 flex flex-col min-h-0 px-6 -mt-10 relative z-20">
           
+          <div className="shrink-0">
           {/* AREA KARTU ABSENSI UTAMA */}
         <div className="bg-white rounded-[2rem] p-6 shadow-xl border border-slate-100 mb-6 text-center animate-slide-up">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">TEKAN TOMBOL DI BAWAH UNTUK ABSEN</p>
@@ -1014,14 +1015,19 @@ export default function Home() {
           </div>
         )}
 
-        {/* RIWAYAT ABSENSI 7 HARI TERAKHIR */}
-        <div className="mb-6 animate-slide-up [animation-delay:150ms]">
+        {/* RIWAYAT ABSENSI 7 HARI TERAKHIR (TITLE FIXED) */}
+        <div className="animate-slide-up [animation-delay:150ms]">
           <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest mb-3.5 flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 text-orange-500">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Riwayat Absen 7 Hari Terakhir
           </h3>
+        </div>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-10 pr-2">
+          <div className="mb-6 animate-slide-up [animation-delay:150ms]">
           
           <div className="space-y-3">
             {history.length === 0 ? (
@@ -1074,36 +1080,32 @@ export default function Home() {
           </div>
         </div>
 
-      </main>
-
-      {/* TOMBOL LIHAT SLIP GAJI */}
-      <div className="px-6 mb-4 animate-slide-up [animation-delay:200ms]">
-        <button
-          onClick={() => setShowPayslipList(true)}
-          className="hover-lift w-full flex items-center justify-between bg-white border border-purple-100 hover:border-purple-300 px-5 py-4 rounded-2xl shadow-sm transition-all duration-300 cursor-pointer group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          <br/>
+          {/* TOMBOL LIHAT SLIP GAJI */}
+          <div className="mb-4 animate-slide-up [animation-delay:200ms]">
+            <button
+              onClick={() => setShowPayslipList(true)}
+              className="hover-lift w-full flex items-center justify-between bg-white border border-purple-100 hover:border-purple-300 px-5 py-4 rounded-2xl shadow-sm transition-all duration-300 cursor-pointer group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                </div>
+                <div className="text-left">
+                  <p className="font-extrabold text-sm text-gray-900">Lihat Slip Gaji</p>
+                  <p className="text-[10px] text-gray-400 font-bold">Rincian gaji bulanan Anda</p>
+                </div>
+              </div>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 text-gray-300 group-hover:text-purple-400 transition-colors">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
-            </div>
-            <div className="text-left">
-              <p className="font-extrabold text-sm text-gray-900">Lihat Slip Gaji</p>
-              <p className="text-[10px] text-gray-400 font-bold">Rincian gaji bulanan Anda</p>
-            </div>
+            </button>
           </div>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4 text-gray-300 group-hover:text-purple-400 transition-colors">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-          </svg>
-        </button>
+          </div>
+        </main>
       </div>
-      </div>
-
-      {/* FOOTER INFO KARYAWAN */}
-      <footer className="absolute bottom-4 left-0 right-0 text-center text-xs text-slate-400 font-bold uppercase tracking-wider">
-        Sistem Presensi Pabrik v1.0
-      </footer>
 
       {/* CONFIRM LOGOUT MODAL */}
       {showLogoutModal && (
