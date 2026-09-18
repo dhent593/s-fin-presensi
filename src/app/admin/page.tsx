@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient, User } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 interface Profile {
   id: string;
@@ -45,6 +46,21 @@ interface GeofenceSettings {
   overtime_threshold_minutes: number;
 }
 
+interface LeaveRequest {
+  id: string;
+  user_id: string;
+  type: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: string;
+  created_at: string;
+  profiles?: {
+    full_name: string;
+    nik: string;
+  };
+}
+
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(false);
@@ -53,7 +69,7 @@ export default function AdminPage() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Tabs navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'employees' | 'recap' | 'geofencing' | 'payslip' | 'notifications'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'employees' | 'recap' | 'geofencing' | 'payslip' | 'notifications' | 'leave'>('dashboard');
 
   // Mobile sidebar state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -66,6 +82,8 @@ export default function AdminPage() {
     late: 0,
     absent: 0
   });
+
+  const [weeklyStats, setWeeklyStats] = useState<{ date: string; hadir: number }[]>([]);
 
   // Data lists
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
@@ -133,6 +151,11 @@ export default function AdminPage() {
   // Notifications states
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
+
+  // Leave Management States
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [leaveActionLoading, setLeaveActionLoading] = useState(false);
   const [newNotifTitle, setNewNotifTitle] = useState('');
   const [newNotifMessage, setNewNotifMessage] = useState('');
   const [newNotifType, setNewNotifType] = useState<'info'|'warning'|'success'>('info');
@@ -267,14 +290,134 @@ export default function AdminPage() {
         absent: totalEmployeesCount - presentIds.size
       });
 
+      // 4b. Fetch 7 days history for Weekly Chart
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(today.getDate() - 6);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+
+      const { data: weekData } = await supabase
+        .from('attendance_logs')
+        .select('check_in')
+        .gte('check_in', sevenDaysAgo.toISOString())
+        .lte('check_in', end);
+
+      if (weekData) {
+        const dayCounts: Record<string, number> = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(sevenDaysAgo);
+          d.setDate(sevenDaysAgo.getDate() + i);
+          dayCounts[d.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' })] = 0;
+        }
+
+        weekData.forEach(log => {
+          const d = new Date(log.check_in).toLocaleDateString('id-ID', { month: 'short', day: 'numeric' });
+          if (dayCounts[d] !== undefined) {
+            dayCounts[d]++;
+          }
+        });
+
+        const weeklyChartData = Object.keys(dayCounts).map(date => ({
+          date,
+          hadir: dayCounts[date]
+        }));
+        setWeeklyStats(weeklyChartData);
+      }
+
       // Fetch recap too
       loadMonthlyRecap(recapMonth, recapYear);
 
       // 5. Fetch Notifications
       loadNotifications();
+      loadLeaveRequests();
 
     } catch (err) {
       console.error('Error loading dashboard data:', err);
+    }
+  };
+
+  const loadLeaveRequests = async () => {
+    setLeaveLoading(true);
+    const { data } = await supabase
+      .from('leave_requests')
+      .select('*, profiles(full_name, nik)')
+      .order('created_at', { ascending: false });
+    if (data) setLeaveRequests(data as any);
+    setLeaveLoading(false);
+  };
+
+  const handleDeleteLeave = async (id: string) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus data pengajuan ini secara permanen?')) return;
+    setLeaveActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('leave_requests')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      loadLeaveRequests();
+    } catch (err: any) {
+      console.error(err);
+      alert('Gagal menghapus data: ' + err.message);
+    } finally {
+      setLeaveActionLoading(false);
+    }
+  };
+
+  const handleUpdateLeaveStatus = async (request: LeaveRequest, newStatus: 'Approved' | 'Rejected') => {
+    setLeaveActionLoading(true);
+    try {
+      // 1. Update request status
+      const { error: updateError } = await supabase
+        .from('leave_requests')
+        .update({ status: newStatus })
+        .eq('id', request.id);
+      
+      if (updateError) throw updateError;
+
+      // 2. If Approved, auto-insert attendance logs for those days
+      if (newStatus === 'Approved') {
+        const startDate = new Date(request.start_date);
+        const endDate = new Date(request.end_date);
+        const logsToInsert = [];
+
+        // Loop through each day from start to end
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          // Skip Sunday if they don't work on Sunday, but for simplicity we insert it.
+          // The recap count can just sum them up or ignore Sundays if needed.
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          const dateStr = `${yyyy}-${mm}-${dd}`;
+          
+          logsToInsert.push({
+            user_id: request.user_id,
+            check_in: `${dateStr}T08:00:00+07:00`,
+            check_out: `${dateStr}T17:00:00+07:00`,
+            status: request.type,
+            notes: `Auto-generated by Leave Request: ${request.reason}`
+          });
+        }
+
+        if (logsToInsert.length > 0) {
+          const { error: insertError } = await supabase
+            .from('attendance_logs')
+            .insert(logsToInsert);
+          
+          if (insertError) {
+            console.error('Error inserting auto logs:', insertError);
+            alert('Status diubah tapi gagal membuat log absensi otomatis.');
+          }
+        }
+      }
+
+      loadLeaveRequests();
+      // Reload recap if needed
+      loadMonthlyRecap(recapMonth, recapYear);
+    } catch (err: any) {
+      console.error(err);
+      alert('Terjadi kesalahan saat memproses izin: ' + err.message);
+    } finally {
+      setLeaveActionLoading(false);
     }
   };
 
@@ -1504,6 +1647,24 @@ export default function AdminPage() {
               </svg>
               Kelola Notifikasi
             </button>
+
+            <button
+              onClick={() => { setActiveTab('leave'); loadLeaveRequests(); closeMobileSidebar(); }}
+              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
+                transition-all duration-200 ease-out ${
+                activeTab === 'leave'
+                  ? 'bg-orange-50 text-orange-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'leave' ? 'text-orange-500 scale-110' : ''
+                }`}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+              </svg>
+              Kelola Cuti & Izin
+            </button>
           </nav>
         </div>
  
@@ -1604,6 +1765,60 @@ export default function AdminPage() {
                 </div>
                 <div className="p-2 md:p-3 bg-red-50 text-red-500 rounded-xl">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+              </div>
+            </div>
+
+            {/* GRAFIK ANALITIK */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
+              {/* Tren Kehadiran Mingguan (Line Chart) */}
+              <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2 hover:shadow-md transition duration-300">
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Tren Kehadiran (7 Hari)</h3>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={weeklyStats} margin={{ top: 5, right: 20, bottom: 5, left: -20 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="date" tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                      <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }} />
+                      <Line type="monotone" dataKey="hadir" name="Karyawan Hadir" stroke="#f97316" strokeWidth={3} dot={{r: 4, fill: '#f97316', strokeWidth: 2, stroke: '#fff'}} activeDot={{r: 6}} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Komposisi Hari Ini (Pie Chart) */}
+              <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition duration-300">
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Status Hari Ini</h3>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Tepat Waktu', value: Math.max(0, stats.checkedIn - stats.late) },
+                          { name: 'Terlambat', value: stats.late },
+                          { name: 'Belum Absen', value: stats.absent }
+                        ].filter(d => d.value > 0)}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        { [
+                          { name: 'Tepat Waktu', value: Math.max(0, stats.checkedIn - stats.late) },
+                          { name: 'Terlambat', value: stats.late },
+                          { name: 'Belum Absen', value: stats.absent }
+                        ].filter(d => d.value > 0).map((entry, index) => {
+                          const colors = { 'Tepat Waktu': '#10b981', 'Terlambat': '#f59e0b', 'Belum Absen': '#ef4444' };
+                          return <Cell key={`cell-${index}`} fill={colors[entry.name as keyof typeof colors]} />;
+                        })}
+                      </Pie>
+                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingTop: '10px' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             </div>
@@ -2791,6 +3006,86 @@ export default function AdminPage() {
                       <button onClick={() => handleDeleteNotification(n.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition" title="Hapus Notifikasi">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
                       </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: KELOLA CUTI & IZIN */}
+        {activeTab === 'leave' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Daftar Pengajuan</h3>
+                  <p className="text-xs text-slate-500 font-medium mt-1">Kelola permohonan cuti, sakit, dan izin karyawan.</p>
+                </div>
+                <button onClick={loadLeaveRequests} className="text-orange-500 hover:bg-orange-50 p-2 rounded-lg transition">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className={`w-5 h-5 ${leaveLoading ? 'animate-spin' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {leaveRequests.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-sm text-gray-400 font-bold">Belum ada pengajuan izin/cuti.</p>
+                  </div>
+                ) : (
+                  leaveRequests.map(req => (
+                    <div key={req.id} className="border border-slate-100 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 hover:shadow-md transition">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">{req.type}</span>
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                            req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                            req.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                            'bg-amber-100 text-amber-700'
+                          }`}>
+                            {req.status}
+                          </span>
+                          <span className="text-[10px] text-gray-400 font-bold hidden md:inline-block">Diajukan: {new Date(req.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}</span>
+                        </div>
+                        <h4 className="text-sm font-black text-gray-800">{req.profiles?.full_name} <span className="text-xs font-bold text-slate-400 ml-1">({req.profiles?.nik})</span></h4>
+                        <p className="text-xs font-bold text-orange-500 mt-1">
+                          Tgl: {new Date(req.start_date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})} 
+                          {req.start_date !== req.end_date && ` - ${new Date(req.end_date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})}`}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-1.5 font-medium leading-relaxed">"{req.reason}"</p>
+                      </div>
+                      
+                      <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                        {req.status === 'Pending' && (
+                          <>
+                            <button 
+                              onClick={() => handleUpdateLeaveStatus(req, 'Rejected')}
+                              disabled={leaveActionLoading}
+                              className="flex-1 md:flex-none px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl transition cursor-pointer"
+                            >
+                              Tolak
+                            </button>
+                            <button 
+                              onClick={() => handleUpdateLeaveStatus(req, 'Approved')}
+                              disabled={leaveActionLoading}
+                              className="flex-1 md:flex-none px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-500/30 transition cursor-pointer"
+                            >
+                              Setujui
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => handleDeleteLeave(req.id)}
+                          disabled={leaveActionLoading}
+                          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-red-500 rounded-xl transition cursor-pointer flex items-center justify-center"
+                          title="Hapus Data"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}

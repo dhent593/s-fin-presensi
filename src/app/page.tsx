@@ -21,6 +21,17 @@ interface AttendanceLog {
   break_end?: string | null;
 }
 
+interface LeaveRequest {
+  id: string;
+  user_id: string;
+  type: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: string;
+  created_at: string;
+}
+
 interface PayslipRecord {
   id: number;
   period_month: number;
@@ -83,13 +94,22 @@ export default function Home() {
   const [selectedPayslip, setSelectedPayslip] = useState<PayslipRecord | null>(null);
   const [payslipLoading, setPayslipLoading] = useState(false);
 
-  // Notification & Summary states
-  const [activeMainTab, setActiveMainTab] = useState<'notifications' | 'summary'>('summary');
+  // Notification & Summary & Leave states
+  const [activeMainTab, setActiveMainTab] = useState<'notifications' | 'summary' | 'leave'>('summary');
   const [activePeriod, setActivePeriod] = useState<1 | 2>(new Date().getDate() <= 15 ? 1 : 2);
   const [attendanceSummary, setAttendanceSummary] = useState({ totalMasuk: 0, totalTerlambat: 0, totalLemburMenit: 0 });
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
+
+  // Leave Form states
+  const [leaveHistory, setLeaveHistory] = useState<LeaveRequest[]>([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [newLeaveType, setNewLeaveType] = useState('Izin');
+  const [newLeaveStart, setNewLeaveStart] = useState('');
+  const [newLeaveEnd, setNewLeaveEnd] = useState('');
+  const [newLeaveReason, setNewLeaveReason] = useState('');
+  const [leaveFeedback, setLeaveFeedback] = useState<{success: boolean, message: string} | null>(null);
 
   // 1. Initial configuration check
   useEffect(() => {
@@ -318,6 +338,70 @@ export default function Home() {
       console.error('Error fetching payslips:', err);
     } finally {
       setPayslipLoading(false);
+    }
+  };
+
+  const fetchLeaveHistory = async () => {
+    if (!user) return;
+    setLeaveLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setLeaveHistory((data || []) as LeaveRequest[]);
+    } catch (err) {
+      console.error('Error fetching leave history:', err);
+    } finally {
+      setLeaveLoading(false);
+    }
+  };
+
+  const handleSubmitLeave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (!newLeaveStart || !newLeaveEnd || !newLeaveReason.trim()) {
+      setLeaveFeedback({ success: false, message: 'Harap isi semua kolom.' });
+      return;
+    }
+    
+    // Validate dates
+    const start = new Date(newLeaveStart);
+    const end = new Date(newLeaveEnd);
+    if (end < start) {
+      setLeaveFeedback({ success: false, message: 'Tanggal selesai tidak boleh lebih awal dari tanggal mulai.' });
+      return;
+    }
+
+    setLeaveLoading(true);
+    try {
+      const { error } = await supabase
+        .from('leave_requests')
+        .insert({
+          user_id: user.id,
+          type: newLeaveType,
+          start_date: newLeaveStart,
+          end_date: newLeaveEnd,
+          reason: newLeaveReason.trim(),
+          status: 'Pending'
+        });
+      
+      if (error) throw error;
+      
+      setLeaveFeedback({ success: true, message: 'Pengajuan berhasil dikirim.' });
+      setNewLeaveReason('');
+      setNewLeaveStart('');
+      setNewLeaveEnd('');
+      fetchLeaveHistory();
+      
+      // Auto clear feedback after 3 seconds
+      setTimeout(() => setLeaveFeedback(null), 3000);
+    } catch (err: any) {
+      setLeaveFeedback({ success: false, message: err.message || 'Terjadi kesalahan.' });
+    } finally {
+      setLeaveLoading(false);
     }
   };
 
@@ -1106,18 +1190,24 @@ export default function Home() {
                 </div>
 
                 {/* Main Tabs */}
-                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl mb-5">
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl mb-5 overflow-x-auto">
                   <button 
                     onClick={() => setActiveMainTab('notifications')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${activeMainTab === 'notifications' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'notifications' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Notifikasi
                   </button>
                   <button 
                     onClick={() => setActiveMainTab('summary')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${activeMainTab === 'summary' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'summary' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Absensi & Gaji
+                  </button>
+                  <button 
+                    onClick={() => { setActiveMainTab('leave'); fetchLeaveHistory(); }}
+                    className={`flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeMainTab === 'leave' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Izin / Cuti
                   </button>
                 </div>
 
@@ -1153,7 +1243,7 @@ export default function Home() {
                       </div>
                     )}
                   </div>
-                ) : (
+                ) : activeMainTab === 'summary' ? (
                   <div className="animate-tab-enter">
                     {/* Period Tabs */}
                     <div className="flex gap-2 mb-4">
@@ -1244,7 +1334,114 @@ export default function Home() {
                       </div>
                     )}
                   </div>
-                )}
+                ) : activeMainTab === 'leave' ? (
+                  <div className="animate-tab-enter">
+                    
+                    {/* Feedback Alert */}
+                    {leaveFeedback && (
+                      <div className={`p-3 mb-4 text-xs font-bold rounded-xl ${leaveFeedback.success ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                        {leaveFeedback.message}
+                      </div>
+                    )}
+
+                    {/* Form Pengajuan Baru */}
+                    <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm mb-5">
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-3">Buat Pengajuan Baru</h4>
+                      <form onSubmit={handleSubmitLeave} className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">Jenis</label>
+                            <select 
+                              value={newLeaveType}
+                              onChange={(e) => setNewLeaveType(e.target.value)}
+                              className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-orange-500 focus:bg-white transition-all font-bold text-slate-700"
+                            >
+                              <option value="Izin">Izin</option>
+                              <option value="Sakit">Sakit</option>
+                              <option value="Cuti">Cuti</option>
+                            </select>
+                          </div>
+                          <div></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">Mulai Tgl</label>
+                            <input 
+                              type="date"
+                              required
+                              value={newLeaveStart}
+                              onChange={(e) => setNewLeaveStart(e.target.value)}
+                              className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 outline-none focus:border-orange-500 focus:bg-white transition-all font-bold text-slate-700"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">Sampai Tgl</label>
+                            <input 
+                              type="date"
+                              required
+                              value={newLeaveEnd}
+                              onChange={(e) => setNewLeaveEnd(e.target.value)}
+                              className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 outline-none focus:border-orange-500 focus:bg-white transition-all font-bold text-slate-700"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1">Alasan / Keterangan</label>
+                          <textarea 
+                            required
+                            rows={2}
+                            value={newLeaveReason}
+                            onChange={(e) => setNewLeaveReason(e.target.value)}
+                            placeholder="Tuliskan keterangan lengkap..."
+                            className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-orange-500 focus:bg-white transition-all font-medium text-slate-700 resize-none"
+                          />
+                        </div>
+                        <button 
+                          type="submit" 
+                          disabled={leaveLoading}
+                          className="w-full py-2.5 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          {leaveLoading ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : 'Kirim Pengajuan'}
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Riwayat Pengajuan */}
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-3">Riwayat Anda</h4>
+                      {leaveHistory.length === 0 ? (
+                        <p className="text-xs text-center font-bold text-slate-400 py-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200">Belum ada riwayat pengajuan.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {leaveHistory.map((item) => (
+                            <div key={item.id} className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm hover:shadow-md transition-all">
+                              <div className="flex justify-between items-start mb-2">
+                                <div>
+                                  <span className="text-[10px] font-extrabold uppercase bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">{item.type}</span>
+                                </div>
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                                  item.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' :
+                                  item.status === 'Rejected' ? 'bg-red-50 text-red-600' :
+                                  'bg-amber-50 text-amber-600'
+                                }`}>
+                                  {item.status}
+                                </span>
+                              </div>
+                              <div className="text-xs font-extrabold text-slate-800 mb-1">
+                                {new Date(item.start_date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})} 
+                                {item.start_date !== item.end_date && ` - ${new Date(item.end_date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})}`}
+                              </div>
+                              <p className="text-[11px] text-slate-500 font-medium line-clamp-2">{item.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                ) : null}
               </>
             ) : (
               /* DETAIL SLIP GAJI - FORMAL DESIGN */
