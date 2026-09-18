@@ -496,11 +496,15 @@ export default function Home() {
 
   useEffect(() => {
     if (showPayslipList && user) {
-      fetchAttendanceSummary(activePeriod);
-      fetchNotifications();
+      if (activeMainTab === 'notifications') {
+        fetchNotifications();
+      } else if (activeMainTab === 'summary') {
+        fetchAttendanceSummary(activePeriod);
+        fetchPayslips();
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePeriod, showPayslipList, user, officeSettings]);
+  }, [activeMainTab, activePeriod, showPayslipList, user, officeSettings]);
 
   const calculateLateMinutes = (checkInStr: string) => {
     if (!checkInStr || !officeSettings?.work_start_time) return 0;
@@ -827,7 +831,6 @@ export default function Home() {
           {/* Tombol Notifikasi Slip Gaji */}
           <button 
             onClick={() => {
-              fetchPayslips();
               setShowPayslipList(true);
             }}
             title="Notifikasi Slip Gaji"
@@ -1069,7 +1072,7 @@ export default function Home() {
       {/* TOMBOL LIHAT SLIP GAJI */}
       <div className="px-6 mb-4 animate-slide-up [animation-delay:200ms]">
         <button
-          onClick={async () => { await fetchPayslips(); setShowPayslipList(true); }}
+          onClick={() => setShowPayslipList(true)}
           className="hover-lift w-full flex items-center justify-between bg-white border border-purple-100 hover:border-purple-300 px-5 py-4 rounded-2xl shadow-sm transition-all duration-300 cursor-pointer group"
         >
           <div className="flex items-center gap-3">
@@ -1213,7 +1216,7 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar pr-2">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative custom-scrollbar pr-2">
                   {activeMainTab === 'notifications' ? (
                     <div className="py-2 animate-tab-soft">
                       {notifLoading ? (
@@ -1458,7 +1461,7 @@ export default function Home() {
                   ? `${new Intl.NumberFormat('id-ID').format(Number(d.upah_per_hari))} × ${d.total_masuk} hari`
                   : null;
                 return (
-                  <>
+                  <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 animate-fade-in pb-6">
                     {/* Back Button */}
                     <button onClick={() => setSelectedPayslip(null)} className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-gray-700 mb-4 cursor-pointer transition-colors">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
@@ -1662,7 +1665,7 @@ export default function Home() {
 
                     {/* Footer dokumen */}
                     <p className="text-center text-[9px] text-gray-300 font-bold tracking-widest mt-3 pb-1">— DOKUMEN INI SAH TANPA TANDA TANGAN —</p>
-                  </>
+                  </div>
                 );
               })()
             )}
