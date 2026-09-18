@@ -20,6 +20,7 @@
   --animate-bottom-sheet: bottom-sheet 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-tab-enter: tab-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-tab-soft: tab-soft 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-spin-fast: spin-fast 0.65s linear infinite;
   
   @keyframes fade-in {
     from { opacity: 0; }
@@ -48,6 +49,10 @@
   @keyframes tab-soft {
     from { transform: scale(0.99) translateY(4px); opacity: 0; filter: blur(2px); }
     to { transform: scale(1) translateY(0); opacity: 1; filter: blur(0); }
+  }
+  @keyframes spin-fast {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 }
 

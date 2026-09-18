@@ -56,6 +56,7 @@ export default function Home() {
   const [nik, setNik] = useState('');
   const [passcode, setPasscode] = useState('');
   const [authError, setAuthError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
 
   // Clock state
   const [timeString, setTimeString] = useState('00:00:00');
@@ -92,6 +93,15 @@ export default function Home() {
 
   // Payslip (Slip Gaji) states
   const [showPayslipList, setShowPayslipList] = useState(false);
+  const [hasUnreadSummary, setHasUnreadSummary] = useState(false);
+  const [hasUnreadLeave, setHasUnreadLeave] = useState(false);
+
+  const openPusatInformasi = () => {
+    setShowPayslipList(true);
+    const today = new Date().toISOString().split('T')[0];
+    if (!localStorage.getItem(`seen_summary_${today}`)) setHasUnreadSummary(true);
+    if (!localStorage.getItem(`seen_leave_${today}`)) setHasUnreadLeave(true);
+  };
   const [payslips, setPayslips] = useState<PayslipRecord[]>([]);
   const [selectedPayslip, setSelectedPayslip] = useState<PayslipRecord | null>(null);
   const [payslipLoading, setPayslipLoading] = useState(false);
@@ -557,7 +567,7 @@ export default function Home() {
       return;
     }
 
-    setLoading(true);
+    setLoginLoading(true);
     setAuthError('');
     // Allow browser to paint the loading state before blocking main thread
     await new Promise(r => setTimeout(r, 50));
@@ -575,12 +585,12 @@ export default function Home() {
 
       if (error) {
         setAuthError('NIK/Email atau PIN/Sandi Anda salah. Silakan coba lagi.');
-        setLoading(false);
+        setLoginLoading(false);
       }
     } catch (err) {
       console.error('Login error:', err);
       setAuthError('Terjadi kesalahan sistem. Coba lagi nanti.');
-      setLoading(false);
+      setLoginLoading(false);
     }
   };
 
@@ -704,8 +714,8 @@ export default function Home() {
           <div className="relative w-16 h-16 mx-auto mb-5">
             {/* Static shadow ring */}
             <div className="absolute inset-0 rounded-full shadow-lg shadow-orange-500/20"></div>
-            {/* Hardware accelerated spinning ring */}
-            <div className="absolute inset-0 border-4 border-orange-500 border-t-transparent rounded-full animate-spin hw-accelerate"></div>
+            {/* Custom fast spinning ring */}
+            <div className="absolute inset-0 border-[5px] border-orange-500 border-t-transparent rounded-full animate-spin-fast [will-change:transform]"></div>
           </div>
           <p className="text-slate-800 font-extrabold text-xl tracking-wide">Memuat aplikasi...</p>
         </div>
@@ -814,9 +824,17 @@ export default function Home() {
             </div>
             <button
               type="submit"
-              className="w-full hover-lift bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-orange-500/20 active:scale-98 transition-all duration-300 mt-2 cursor-pointer"
+              disabled={loginLoading}
+              className="w-full hover-lift bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-orange-500/20 active:scale-98 transition-all duration-300 mt-2 cursor-pointer disabled:opacity-70 disabled:cursor-wait"
             >
-              MASUK KE APLIKASI
+              {loginLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin hw-accelerate"></div>
+                  <span>MEMPROSES...</span>
+                </div>
+              ) : (
+                'MASUK KE APLIKASI'
+              )}
             </button>
           </form>
         </div>
@@ -838,7 +856,7 @@ export default function Home() {
           {/* Tombol Notifikasi Slip Gaji */}
           <button 
             onClick={() => {
-              setShowPayslipList(true);
+              openPusatInformasi();
             }}
             title="Notifikasi Slip Gaji"
             className="bg-white/10 hover:bg-white/20 active:scale-90 p-2.5 rounded-xl transition-all duration-300 shadow-md backdrop-blur-md border border-white/10 cursor-pointer relative"
@@ -1084,7 +1102,7 @@ export default function Home() {
           {/* TOMBOL LIHAT SLIP GAJI */}
           <div className="mb-4 animate-slide-up [animation-delay:200ms]">
             <button
-              onClick={() => setShowPayslipList(true)}
+              onClick={() => openPusatInformasi()}
               className="hover-lift w-full flex items-center justify-between bg-white border border-purple-100 hover:border-purple-300 px-5 py-4 rounded-2xl shadow-sm transition-all duration-300 cursor-pointer group"
             >
               <div className="flex items-center gap-3">
@@ -1225,16 +1243,27 @@ export default function Home() {
                     Notifikasi
                   </button>
                   <button 
-                    onClick={() => startTransition(() => setActiveMainTab('summary'))}
+                    onClick={() => {
+                      startTransition(() => setActiveMainTab('summary'));
+                      setHasUnreadSummary(false);
+                      localStorage.setItem(`seen_summary_${new Date().toISOString().split('T')[0]}`, 'true');
+                    }}
                     className={`relative z-10 flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap ${activeMainTab === 'summary' ? 'text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Absensi & Gaji
+                    {hasUnreadSummary && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-sm shadow-red-500/50"></span>}
                   </button>
                   <button 
-                    onClick={() => { startTransition(() => { setActiveMainTab('leave'); }); fetchLeaveHistory(); }}
+                    onClick={() => {
+                      startTransition(() => { setActiveMainTab('leave'); });
+                      fetchLeaveHistory();
+                      setHasUnreadLeave(false);
+                      localStorage.setItem(`seen_leave_${new Date().toISOString().split('T')[0]}`, 'true');
+                    }}
                     className={`relative z-10 flex-1 min-w-[80px] py-2 px-3 text-[11px] md:text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap ${activeMainTab === 'leave' ? 'text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Izin / Cuti
+                    {hasUnreadLeave && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-sm shadow-red-500/50"></span>}
                   </button>
                 </div>
 
