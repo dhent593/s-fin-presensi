@@ -469,17 +469,36 @@ export default function AdminPage() {
       const start = new Date(year, month, 1).toISOString();
       const end = new Date(year, month + 1, 0, 23, 59, 59, 999).toISOString();
 
-      const { data, error } = await supabase
-        .from('attendance_logs')
-        .select('*, profiles(nik, full_name)')
-        .gte('check_in', start)
-        .lte('check_in', end)
-        .order('check_in', { ascending: true });
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let fetchMore = true;
 
-      if (error) throw error;
+      while (fetchMore) {
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .select('*, profiles(nik, full_name)')
+          .gte('check_in', start)
+          .lte('check_in', end)
+          .order('check_in', { ascending: true })
+          .range(from, from + step - 1);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          if (data.length < step) {
+            fetchMore = false;
+          } else {
+            from += step;
+          }
+        } else {
+          fetchMore = false;
+        }
+      }
       
       startTransition(() => {
-        setRecapLogs((data || []) as unknown as AttendanceLog[]);
+        setRecapLogs(allData as unknown as AttendanceLog[]);
         setRecapLoading(false);
       });
     } catch (err) {
@@ -844,16 +863,20 @@ export default function AdminPage() {
 
     try {
       if (log) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('attendance_logs')
           .update({
             check_in: checkInTimestamp,
             check_out: checkOutTimestamp,
             status: editStatus
           })
-          .eq('id', log.id);
+          .eq('id', log.id)
+          .select();
 
         if (error) throw error;
+        if (!data || data.length === 0) {
+          throw new Error('Update ditolak oleh sistem (kemungkinan masalah hak akses/RLS database).');
+        }
       } else {
         const { error } = await supabase
           .from('attendance_logs')
@@ -886,12 +909,16 @@ export default function AdminPage() {
     setIsSavingEdit(true);
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('attendance_logs')
         .delete()
-        .eq('id', editingCell.log.id);
+        .eq('id', editingCell.log.id)
+        .select();
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Hapus ditolak oleh sistem (kemungkinan masalah hak akses/RLS database).');
+      }
 
       await loadMonthlyRecap(recapMonth, recapYear);
       setEditingCell(null);
