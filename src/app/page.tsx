@@ -86,6 +86,7 @@ export default function Home() {
     saturday_work_end_time: string;
     break_start_time: string;
     break_end_time: string;
+    overtime_threshold_minutes?: number;
   } | null>(null);
 
   // Logout confirmation modal state
@@ -323,7 +324,7 @@ export default function Home() {
     try {
       const { data, error } = await supabase
         .from('geofence_settings')
-        .select('work_start_time, work_end_time, saturday_work_start_time, saturday_work_end_time, break_start_time, break_end_time')
+        .select('work_start_time, work_end_time, saturday_work_start_time, saturday_work_end_time, break_start_time, break_end_time, overtime_threshold_minutes')
         .eq('id', 1)
         .single();
       if (!error && data) {
@@ -454,7 +455,7 @@ export default function Home() {
       let lemburMenit = 0;
 
       const workEndStr = officeSettings?.work_end_time || '17:00:00';
-      const [endHour, endMin] = workEndStr.split(':').map(Number);
+      const threshold = officeSettings?.overtime_threshold_minutes ?? 30;
 
       (data || []).forEach((log: any) => {
         masuk++;
@@ -462,12 +463,22 @@ export default function Home() {
         
         if (log.check_out) {
           const checkOutTime = new Date(log.check_out);
-          const workEnd = new Date(checkOutTime);
-          workEnd.setHours(endHour, endMin, 0, 0);
-          
-          if (checkOutTime > workEnd) {
-            const diffMs = checkOutTime.getTime() - workEnd.getTime();
-            lemburMenit += Math.floor(diffMs / 60000);
+          const wibCheckOut = new Date(checkOutTime.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+          const checkOutHrs = wibCheckOut.getHours();
+          const checkOutMins = wibCheckOut.getMinutes();
+
+          const dayOfWeek = wibCheckOut.getDay();
+          const targetEndStr = (dayOfWeek === 6 && officeSettings?.saturday_work_end_time)
+            ? officeSettings.saturday_work_end_time
+            : workEndStr;
+
+          const [endHrs, endMins] = targetEndStr.split(':').map(Number);
+          const checkOutTotalMins = checkOutHrs * 60 + checkOutMins;
+          const endTotalMins = endHrs * 60 + (endMins || 0);
+
+          const diff = checkOutTotalMins - endTotalMins;
+          if (diff > threshold) {
+            lemburMenit += diff;
           }
         }
       });
