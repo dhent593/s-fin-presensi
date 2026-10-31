@@ -12,6 +12,7 @@ interface MonthlyRecapGridProps {
   recapEndDay: number;
   setRecapEndDay: (d: number) => void;
   onExportRecapXLSX: () => void;
+  exportRecapLoading?: boolean;
   onOpenResetRecapModal: () => void;
   searchTerm: string;
   setSearchTerm: (s: string) => void;
@@ -59,6 +60,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
   recapEndDay,
   setRecapEndDay,
   onExportRecapXLSX,
+  exportRecapLoading = false,
   onOpenResetRecapModal,
   searchTerm,
   setSearchTerm,
@@ -225,23 +227,33 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
 
             <button
               onClick={onExportRecapXLSX}
-              className="hover-lift bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
+              disabled={exportRecapLoading}
+              className="hover-lift bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth="2.5"
-                stroke="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                />
-              </svg>
-              Ekspor (.XLSX)
+              {exportRecapLoading ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Mengekspor...</span>
+                </>
+              ) : (
+                <>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="2.5"
+                    stroke="currentColor"
+                    className="w-3.5 h-3.5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                    />
+                  </svg>
+                  <span>Ekspor (.XLSX)</span>
+                </>
+              )}
             </button>
 
             <button

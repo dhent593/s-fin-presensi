@@ -108,6 +108,7 @@ export default function AdminPage() {
   const [recapLoading, setRecapLoading] = useState<boolean>(false);
   const [showResetRecapModal, setShowResetRecapModal] = useState(false);
   const [resetRecapLoading, setResetRecapLoading] = useState(false);
+  const [exportRecapLoading, setExportRecapLoading] = useState(false);
 
   // Payslip (Slip Gaji) states
   const [payslipList, setPayslipList] = useState<{ period_month: number; period_year: number; period_label: string; count: number; uploaded_at: string }[]>([]);
@@ -1198,7 +1199,7 @@ export default function AdminPage() {
     return s;
   }, [daysInSelectedMonth, recapYear, recapMonth]);
 
-  // Export Monthly Recap Grid to XLSX file (styled)
+  // Export Monthly Recap Grid to XLSX file (optimized O(1) non-blocking)
   const handleExportRecapXLSX = () => {
     const activeEmployees = processedEmployees.filter(p => p.role === 'user');
     if (activeEmployees.length === 0) {
@@ -1206,220 +1207,123 @@ export default function AdminPage() {
       return;
     }
 
-    const totalDaysInMonth = new Date(recapYear, recapMonth + 1, 0).getDate();
-    const clampedStart = Math.max(recapStartDay, 1);
-    const clampedEnd = Math.min(recapEndDay, totalDaysInMonth);
-    // Days to export (matches the visible grid)
-    const exportDays = Array.from(
-      { length: Math.max(0, clampedEnd - clampedStart + 1) },
-      (_, i) => clampedStart + i
-    );
+    setExportRecapLoading(true);
 
-    // ── Build data rows ──────────────────────────────────────────────────────
-    const isWorkingAttendance = (status?: string) => {
-      return status ? !['Izin', 'Sakit', 'Cuti', 'Alpa'].includes(status) : false;
-    };
+    setTimeout(() => {
+      try {
+        const totalDaysInMonth = new Date(recapYear, recapMonth + 1, 0).getDate();
+        const clampedStart = Math.max(recapStartDay, 1);
+        const clampedEnd = Math.min(recapEndDay, totalDaysInMonth);
+        const exportDays = Array.from(
+          { length: Math.max(0, clampedEnd - clampedStart + 1) },
+          (_, i) => clampedStart + i
+        );
 
-    const dataRows = activeEmployees.map((emp, rowIdx) => {
-      const presentDays = recapLogs.filter(l => l.user_id === emp.id && isWorkingAttendance(l.status));
-      const countTotal = presentDays.length;
-      // Count within selected range
-      const inRange = presentDays.filter(l => {
-        const d = getWibDate(l.check_in).getDate();
-        return d >= clampedStart && d <= clampedEnd;
-      });
-      const countInRange = inRange.length;
+        // O(1) instant lookup from pre-computed memoized stats & map
+        const dataRows = activeEmployees.map((emp, rowIdx) => {
+          const stats = employeeRecapStats.get(emp.id) || {
+            countInRange: 0,
+            countTotal: 0,
+            totalLateMinutes: 0,
+            totalOvertimeMinutes: 0,
+          };
 
-      const totalLateMinutes = inRange.reduce((acc, log) => {
-        return log.status === 'Terlambat'
-          ? acc + getMinutesLate(log.check_in, geofence.work_start_time)
-          : acc;
-      }, 0);
-      const totalOvertimeMinutes = inRange.reduce((acc, log) => {
-        return acc + getOvertimeMinutes(log.check_out, geofence.work_end_time);
-      }, 0);
+          const dailyStatus = exportDays.map(day => {
+            const log = recapLogMap.get(`${emp.id}_${day}`);
+            if (log) {
+              const timeInStr = formatWibTime(log.check_in);
+              const timeOutStr = log.check_out ? formatWibTime(log.check_out) : '--:--';
+              return `${log.status} (${timeInStr} → ${timeOutStr})`;
+            }
+            return sundaySet.has(day) ? 'Libur' : '—';
+          });
 
-      const dailyStatus = exportDays.map(day => {
-        const log = recapLogs.find(l => {
-          const cDate = getWibDate(l.check_in);
-          return l.user_id === emp.id &&
-                 cDate.getFullYear() === recapYear &&
-                 cDate.getMonth() === recapMonth &&
-                 cDate.getDate() === day;
+          return {
+            no: rowIdx + 1,
+            nama: emp.full_name,
+            nik: emp.nik,
+            countInRange: stats.countInRange,
+            total: stats.countTotal,
+            terlambat: formatLateMinutes(stats.totalLateMinutes),
+            lembur: formatOvertimeMinutes(stats.totalOvertimeMinutes),
+            daily: dailyStatus,
+          };
         });
-        if (log) {
-          const timeInStr = formatWibTime(log.check_in);
-          const timeOutStr = log.check_out ? formatWibTime(log.check_out) : '--:--';
-          return `${log.status} (${timeInStr} → ${timeOutStr})`;
-        }
-        // Check if Sunday
-        const isSun = new Date(recapYear, recapMonth, day).getDay() === 0;
-        return isSun ? 'Libur' : '—';
-      });
 
-      return {
-        no: rowIdx + 1,
-        nama: emp.full_name,
-        nik: emp.nik,
-        countInRange,
-        total: countTotal,
-        terlambat: formatLateMinutes(totalLateMinutes),
-        lembur: formatOvertimeMinutes(totalOvertimeMinutes),
-        daily: dailyStatus,
-      };
-    });
+        // ── Build worksheet data (array-of-arrays) ───────────────────────────────
+        const titleRow = [`REKAP BULANAN KEHADIRAN KARYAWAN — ${INDONESIAN_MONTHS[recapMonth].toUpperCase()} ${recapYear} (Tgl ${clampedStart}–${clampedEnd})`];
+        const blankRow: string[] = [];
+        const dateHeaders = exportDays.map(d => `${d}`);
+        const headerRow = [
+          'No',
+          'Nama Karyawan',
+          'NIK',
+          `Hadir (${clampedStart}–${clampedEnd})`,
+          'Total Hadir',
+          'Terlambat',
+          'Lembur',
+          ...dateHeaders,
+        ];
 
-    // ── Build worksheet data (array-of-arrays) ───────────────────────────────
-    // Row 1: Title
-    const titleRow = [`REKAP BULANAN KEHADIRAN KARYAWAN — ${INDONESIAN_MONTHS[recapMonth].toUpperCase()} ${recapYear} (Tgl ${clampedStart}–${clampedEnd})`];
+        const bodyRows = dataRows.map(r => [
+          r.no,
+          r.nama,
+          r.nik,
+          r.countInRange,
+          r.total,
+          r.terlambat,
+          r.lembur,
+          ...r.daily,
+        ]);
 
-    // Row 2: blank
-    const blankRow: string[] = [];
+        const aoa = [titleRow, blankRow, headerRow, ...bodyRows];
 
-    // Row 3: headers
-    const dateHeaders = exportDays.map(d => `${d}`);
-    const headerRow = [
-      'No',
-      'Nama Karyawan',
-      'NIK',
-      `Hadir (${clampedStart}–${clampedEnd})`,
-      'Total Hadir',
-      'Terlambat',
-      'Lembur',
-      ...dateHeaders,
-    ];
+        // ── Create workbook & sheet ───────────────────────────────────────────────
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-    // Data rows
-    const bodyRows = dataRows.map(r => [
-      r.no,
-      r.nama,
-      r.nik,
-      r.countInRange,
-      r.total,
-      r.terlambat,
-      r.lembur,
-      ...r.daily,
-    ]);
+        const totalCols = 7 + exportDays.length;
 
-    const aoa = [titleRow, blankRow, headerRow, ...bodyRows];
+        // Column widths
+        ws['!cols'] = [
+          { wch: 5 },   // No
+          { wch: 28 },  // Nama
+          { wch: 14 },  // NIK
+          { wch: 14 },  // Hadir (range)
+          { wch: 12 },  // Total
+          { wch: 14 },  // Terlambat
+          { wch: 14 },  // Lembur
+          ...Array(exportDays.length).fill({ wch: 16 }),
+        ];
 
-    // ── Create workbook & sheet ───────────────────────────────────────────────
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+        // Row heights
+        ws['!rows'] = [
+          { hpt: 24 }, // title row
+          { hpt: 6 },  // blank
+          { hpt: 26 }, // header
+          ...Array(dataRows.length).fill({ hpt: 20 }),
+        ];
 
-    const totalCols = 7 + exportDays.length; // No, Nama, NIK, Hadir(range), Total, Terlambat, Lembur + daily cols
+        // Merge title across all columns
+        ws['!merges'] = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
+        ];
 
-    // ── Column widths ────────────────────────────────────────────────────────
-    ws['!cols'] = [
-      { wch: 4 },   // No
-      { wch: 28 },  // Nama
-      { wch: 14 },  // NIK
-      { wch: 14 },  // Hadir (range)
-      { wch: 12 },  // Total
-      { wch: 14 },  // Terlambat
-      { wch: 14 },  // Lembur
-      ...Array(exportDays.length).fill({ wch: 16 }), // tanggal harian
-    ];
+        // Freeze panes: freeze first 3 cols & top 3 rows
+        ws['!freeze'] = { xSplit: 3, ySplit: 3 };
 
-    // ── Row heights ──────────────────────────────────────────────────────────
-    ws['!rows'] = [
-      { hpt: 24 }, // title row
-      { hpt: 6 },  // blank
-      { hpt: 30 }, // header
-      ...Array(dataRows.length).fill({ hpt: 20 }),
-    ];
-
-    // ── Merge title across all columns ───────────────────────────────────────
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
-    ];
-
-    // ── Freeze header row (row 3 = index 2) ──────────────────────────────────
-    ws['!freeze'] = { xSplit: 3, ySplit: 3 }; // freeze first 3 cols & top 3 rows
-
-    // ── Apply cell styles ────────────────────────────────────────────────────
-    const HEADER_ROW = 2; // 0-indexed row index of header
-    const DATA_START = 3; // 0-indexed
-
-    const colLetter = (c: number) => {
-      let s = '';
-      let n = c + 1;
-      while (n > 0) {
-        const rem = (n - 1) % 26;
-        s = String.fromCharCode(65 + rem) + s;
-        n = Math.floor((n - 1) / 26);
+        // ── Export ───────────────────────────────────────────────────────────────
+        const sheetName = `Rekap ${INDONESIAN_MONTHS[recapMonth]} ${recapYear}`;
+        const fileName = `rekap_bulanan_${INDONESIAN_MONTHS[recapMonth]}_${recapYear}_tgl${clampedStart}-${clampedEnd}.xlsx`;
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        XLSX.writeFile(wb, fileName);
+      } catch (err: unknown) {
+        console.error('Export error:', err);
+        alert('Gagal mengekspor file: ' + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        setExportRecapLoading(false);
       }
-      return s;
-    };
-
-    const cellRef = (r: number, c: number) => `${colLetter(c)}${r + 1}`;
-
-    // Style title cell
-    const titleCell = ws[cellRef(0, 0)];
-    if (titleCell) {
-      titleCell.s = {
-        font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } },
-        fill: { fgColor: { rgb: '1E293B' } },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
-      };
-    }
-
-    // Style header row
-    for (let c = 0; c < totalCols; c++) {
-      const ref = cellRef(HEADER_ROW, c);
-      const cell = ws[ref];
-      if (!cell) continue;
-      cell.s = {
-        font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } },
-        fill: { fgColor: { rgb: '334155' } },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-        border: {
-          top:    { style: 'thin', color: { rgb: '64748B' } },
-          bottom: { style: 'thin', color: { rgb: '64748B' } },
-          left:   { style: 'thin', color: { rgb: '64748B' } },
-          right:  { style: 'thin', color: { rgb: '64748B' } },
-        },
-      };
-    }
-
-    // Style data rows
-    for (let r = 0; r < dataRows.length; r++) {
-      const isEven = r % 2 === 0;
-      const rowBg = isEven ? 'FFFFFF' : 'F8FAFC';
-      for (let c = 0; c < totalCols; c++) {
-        const ref = cellRef(DATA_START + r, c);
-        const cell = ws[ref];
-        if (!cell) continue;
-
-        // Colour daily cells (starting at column index 7)
-        let fillColor = rowBg;
-        if (c >= 7) {
-          const val = String(cell.v ?? '');
-          if (val === '—') fillColor = 'FEE2E2';
-          else if (val.startsWith('Tepat') || val.startsWith('Hadir')) fillColor = 'DCFCE7';
-          else if (val.startsWith('Terlambat')) fillColor = 'FEF3C7';
-          else if (val === 'Libur') fillColor = 'E0E7FF';
-        }
-
-        cell.s = {
-          font: { sz: 9 },
-          fill: { fgColor: { rgb: fillColor } },
-          alignment: { horizontal: c < 3 ? 'left' : 'center', vertical: 'center', wrapText: false },
-          border: {
-            top:    { style: 'hair', color: { rgb: 'CBD5E1' } },
-            bottom: { style: 'hair', color: { rgb: 'CBD5E1' } },
-            left:   { style: 'hair', color: { rgb: 'CBD5E1' } },
-            right:  { style: 'hair', color: { rgb: 'CBD5E1' } },
-          },
-        };
-      }
-    }
-
-    // ── Export ───────────────────────────────────────────────────────────────
-    const sheetName = `Rekap ${INDONESIAN_MONTHS[recapMonth]} ${recapYear}`;
-    const fileName = `rekap_bulanan_${INDONESIAN_MONTHS[recapMonth]}_${recapYear}_tgl${clampedStart}-${clampedEnd}.xlsx`;
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    XLSX.writeFile(wb, fileName, { cellStyles: true });
+    }, 50);
   };
 
   // Reset / hapus semua log absensi pada bulan & tahun yang dipilih
@@ -1710,6 +1614,7 @@ export default function AdminPage() {
             recapEndDay={recapEndDay}
             setRecapEndDay={setRecapEndDay}
             onExportRecapXLSX={handleExportRecapXLSX}
+            exportRecapLoading={exportRecapLoading}
             onOpenResetRecapModal={() => setShowResetRecapModal(true)}
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
