@@ -440,6 +440,8 @@ export default function Home() {
       } else {
         setUser(null);
         setProfile(null);
+        setPasscode('');
+        setLoginLoading(false);
         setLoading(false);
       }
     });
@@ -540,11 +542,11 @@ export default function Home() {
 
       if (error) {
         setAuthError('NIK/Email atau PIN/Sandi Anda salah. Silakan coba lagi.');
-        setLoginLoading(false);
       }
     } catch (err) {
       console.error('Login error:', err);
       setAuthError('Terjadi kesalahan sistem. Coba lagi nanti.');
+    } finally {
       setLoginLoading(false);
     }
   };
@@ -554,6 +556,9 @@ export default function Home() {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    setPasscode('');
+    setAuthError('');
+    setLoginLoading(false);
     setLoading(false);
   };
 
