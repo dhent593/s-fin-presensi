@@ -1,76 +1,50 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useTransition } from 'react';
+import { useEffect, useState, useMemo, useTransition } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { createClient, User } from '@supabase/supabase-js';
+import { User } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import {
+  Profile,
+  AttendanceLog,
+  GeofenceSettings,
+  LeaveRequest,
+  NotificationRecord,
+} from '@/types';
+import {
+  getWibDate,
+  formatWibTime,
+  formatWibDate,
+  getMonthRangeWib,
+  getTodayRangeWib,
+  INDONESIAN_MONTHS,
+} from '@/lib/date';
 
-interface Profile {
-  id: string;
-  nik: string;
-  full_name: string;
-  role: 'user' | 'admin';
-  passcode: string;
-  created_at: string;
-}
-
-interface AttendanceLog {
-  id: number;
-  user_id: string;
-  check_in: string;
-  check_out: string | null;
-  status: string;
-  latitude: number;
-  longitude: number;
-  break_start?: string | null;
-  break_end?: string | null;
-  profiles: {
-    nik: string;
-    full_name: string;
-  } | null;
-}
-
-interface GeofenceSettings {
-  id: number;
-  factory_lat: number;
-  factory_lon: number;
-  radius_meters: number;
-  work_start_time: string;
-  work_end_time: string;
-  saturday_work_start_time: string;
-  saturday_work_end_time: string;
-  break_start_time: string;
-  break_end_time: string;
-  late_tolerance_minutes: number;
-  overtime_threshold_minutes: number;
-}
-
-interface LeaveRequest {
-  id: string;
-  user_id: string;
-  type: string;
-  start_date: string;
-  end_date: string;
-  reason: string;
-  status: string;
-  created_at: string;
-  profiles?: {
-    full_name: string;
-    nik: string;
-  };
-}
+// Admin Modular Components
+import { AdminSidebar, AdminTab } from '@/components/admin/AdminSidebar';
+import { DashboardOverview } from '@/components/admin/DashboardOverview';
+import { EmployeeManager } from '@/components/admin/EmployeeManager';
+import { MonthlyRecapGrid } from '@/components/admin/MonthlyRecapGrid';
+import { GeofenceSettingsCard } from '@/components/admin/GeofenceSettingsCard';
+import { PayslipManager } from '@/components/admin/PayslipManager';
+import { NotificationManager } from '@/components/admin/NotificationManager';
+import { LeaveManager } from '@/components/admin/LeaveManager';
+import {
+  AdminLogoutModal,
+  DeleteEmployeeModal,
+  ResetEmployeesModal,
+} from '@/components/admin/AdminModals';
 
 export default function AdminPage() {
   const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
-  const [configured, setConfigured] = useState(false);
+  const [configured] = useState(() => isSupabaseConfigured());
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Tabs navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'employees' | 'recap' | 'geofencing' | 'payslip' | 'notifications' | 'leave'>('dashboard');
+  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
 
   // Mobile sidebar state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -128,8 +102,8 @@ export default function AdminPage() {
   const [showResetModal, setShowResetModal] = useState(false);
 
   // Monthly Recap states
-  const [recapMonth, setRecapMonth] = useState<number>(new Date().getMonth());
-  const [recapYear, setRecapYear] = useState<number>(new Date().getFullYear());
+  const [recapMonth, setRecapMonth] = useState<number>(() => getWibDate().getMonth());
+  const [recapYear, setRecapYear] = useState<number>(() => getWibDate().getFullYear());
   const [recapLogs, setRecapLogs] = useState<AttendanceLog[]>([]);
   const [recapLoading, setRecapLoading] = useState<boolean>(false);
   const [showResetRecapModal, setShowResetRecapModal] = useState(false);
@@ -141,16 +115,19 @@ export default function AdminPage() {
   const [payslipImportLoading, setPayslipImportLoading] = useState(false);
   const [payslipImportProgress, setPayslipImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [payslipFeedback, setPayslipFeedback] = useState<{ success: boolean; message: string } | null>(null);
-  const [payslipMonth, setPayslipMonth] = useState<number>(new Date().getMonth());
-  const [payslipYear, setPayslipYear] = useState<number>(new Date().getFullYear());
+  const [payslipMonth, setPayslipMonth] = useState<number>(() => getWibDate().getMonth());
+  const [payslipYear, setPayslipYear] = useState<number>(() => getWibDate().getFullYear());
   const [payslipLabel, setPayslipLabel] = useState<string>('Awal');
   const [deletingPeriod, setDeletingPeriod] = useState<{ month: number; year: number; label: string } | null>(null);
   // Date-range for recap summary (day numbers within the selected month)
   const [recapStartDay, setRecapStartDay] = useState<number>(1);
-  const [recapEndDay, setRecapEndDay] = useState<number>(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate());
+  const [recapEndDay, setRecapEndDay] = useState<number>(() => {
+    const d = getWibDate();
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  });
 
   // Notifications states
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
 
   // Leave Management States
@@ -179,55 +156,83 @@ export default function AdminPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'excel' | 'name' | 'nik'>('newest');
 
   // Date String
-  const [dateString, setDateString] = useState('');
+  const [dateString] = useState(() =>
+    formatWibDate(new Date(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  );
 
-  useEffect(() => {
-    const isConfig = isSupabaseConfigured();
-    setConfigured(isConfig);
-    if (!isConfig) {
-      window.location.href = '/'; // Redirect to config page at /
-      return;
-    }
+  // ── Hoisted Data Loaders ──────────────────────────────────────────────────
+  const loadMonthlyRecap = async (month: number, year: number) => {
+    setRecapLoading(true);
+    try {
+      const { start, end } = getMonthRangeWib(year, month);
 
-    const todayOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    setDateString(new Date().toLocaleDateString('id-ID', todayOptions));
+      let allData: AttendanceLog[] = [];
+      let from = 0;
+      const step = 1000;
+      let fetchMore = true;
 
-    const checkAdminSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) {
-          window.location.href = '/';
-          return;
+      while (fetchMore) {
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .select('*, profiles(nik, full_name)')
+          .gte('check_in', start)
+          .lte('check_in', end)
+          .order('check_in', { ascending: true })
+          .range(from, from + step - 1);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allData = [...allData, ...(data as unknown as AttendanceLog[])];
+          if (data.length < step) {
+            fetchMore = false;
+          } else {
+            from += step;
+          }
+        } else {
+          fetchMore = false;
         }
-
-        // Fetch user profile to verify admin role
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        if (error || !profile || profile.role !== 'admin') {
-          console.warn('Unauthorized access redirect to employee home.');
-          window.location.href = '/';
-          return;
-        }
-
-        setCurrentUser(session.user);
-        setAdminProfile(profile as Profile);
-
-        // Load dashboard data
-        await loadAllDashboardData();
-      } catch (err) {
-        console.error('Auth check error:', err);
-        window.location.href = '/';
-      } finally {
-        setLoading(false);
       }
-    };
+      
+      startTransition(() => {
+        setRecapLogs(allData);
+        setRecapLoading(false);
+      });
+    } catch (err: unknown) {
+      console.error('Error loading monthly recap:', err);
+      setRecapLoading(false);
+    }
+  };
 
-    checkAdminSession();
-  }, [configured]);
+  const loadNotifications = async () => {
+    setNotifLoading(true);
+    try {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*, profiles(full_name)')
+        .order('created_at', { ascending: false });
+      if (data) setNotifications(data as NotificationRecord[]);
+    } catch (err: unknown) {
+      console.error('Error loading notifications:', err);
+    } finally {
+      setNotifLoading(false);
+    }
+  };
+
+  const loadLeaveRequests = async () => {
+    setLeaveLoading(true);
+    try {
+      const { data } = await supabase
+        .from('leave_requests')
+        .select('*, profiles(full_name, nik)')
+        .order('created_at', { ascending: false });
+      if (data) setLeaveRequests(data as unknown as LeaveRequest[]);
+    } catch (err: unknown) {
+      console.error('Error loading leave requests:', err);
+    } finally {
+      setLeaveLoading(false);
+    }
+  };
 
   const loadAllDashboardData = async () => {
     try {
@@ -265,10 +270,8 @@ export default function AdminPage() {
 
       const totalEmployeesCount = allEmployees.filter(p => p.role === 'user').length;
 
-      // 3. Fetch logs for today (local day range query)
-      const today = new Date();
-      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
-      const end = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
+      // 3. Fetch logs for today (WIB day range query)
+      const { start, end } = getTodayRangeWib();
 
       const { data: logsData } = await supabase
         .from('attendance_logs')
@@ -291,27 +294,31 @@ export default function AdminPage() {
         absent: totalEmployeesCount - presentIds.size
       });
 
-      // 4b. Fetch 7 days history for Weekly Chart
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(today.getDate() - 6);
-      sevenDaysAgo.setHours(0, 0, 0, 0);
+      // 4b. Fetch 7 days history for Weekly Chart (WIB)
+      const nowWib = getWibDate();
+      const sevenDaysAgo = getWibDate();
+      sevenDaysAgo.setDate(nowWib.getDate() - 6);
+      const sevenY = sevenDaysAgo.getFullYear();
+      const sevenM = String(sevenDaysAgo.getMonth() + 1).padStart(2, '0');
+      const sevenD = String(sevenDaysAgo.getDate()).padStart(2, '0');
+      const sevenStartIso = `${sevenY}-${sevenM}-${sevenD}T00:00:00+07:00`;
 
       const { data: weekData } = await supabase
         .from('attendance_logs')
         .select('check_in')
-        .gte('check_in', sevenDaysAgo.toISOString())
+        .gte('check_in', sevenStartIso)
         .lte('check_in', end);
 
       if (weekData) {
         const dayCounts: Record<string, number> = {};
         for (let i = 0; i < 7; i++) {
-          const d = new Date(sevenDaysAgo);
+          const d = getWibDate();
           d.setDate(sevenDaysAgo.getDate() + i);
-          dayCounts[d.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' })] = 0;
+          dayCounts[formatWibDate(d, { month: 'short', day: 'numeric' })] = 0;
         }
 
         weekData.forEach(log => {
-          const d = new Date(log.check_in).toLocaleDateString('id-ID', { month: 'short', day: 'numeric' });
+          const d = formatWibDate(log.check_in, { month: 'short', day: 'numeric' });
           if (dayCounts[d] !== undefined) {
             dayCounts[d]++;
           }
@@ -327,38 +334,88 @@ export default function AdminPage() {
       // Fetch recap too
       loadMonthlyRecap(recapMonth, recapYear);
 
-      // 5. Fetch Notifications
+      // 5. Fetch Notifications & Leave Requests
       loadNotifications();
       loadLeaveRequests();
 
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error loading dashboard data:', err);
     }
   };
 
-  const loadLeaveRequests = async () => {
-    setLeaveLoading(true);
-    const { data } = await supabase
-      .from('leave_requests')
-      .select('*, profiles(full_name, nik)')
-      .order('created_at', { ascending: false });
-    if (data) setLeaveRequests(data as any);
-    setLeaveLoading(false);
-  };
+  useEffect(() => {
+    if (!configured) {
+      window.location.href = '/';
+      return;
+    }
+
+    const checkAdminSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          window.location.href = '/';
+          return;
+        }
+
+        // Fetch user profile to verify admin role
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (error || !profile || profile.role !== 'admin') {
+          console.warn('Unauthorized access redirect to employee home.');
+          window.location.href = '/';
+          return;
+        }
+
+        setCurrentUser(session.user);
+        setAdminProfile(profile as Profile);
+
+        // Load dashboard data
+        await loadAllDashboardData();
+      } catch (err: unknown) {
+        console.error('Auth check error:', err);
+        window.location.href = '/';
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAdminSession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configured]);
 
   const handleDeleteLeave = async (id: string) => {
     if (!confirm('Apakah Anda yakin ingin menghapus data pengajuan ini secara permanen?')) return;
     setLeaveActionLoading(true);
     try {
+      const targetReq = leaveRequests.find(r => r.id === id);
       const { error } = await supabase
         .from('leave_requests')
         .delete()
         .eq('id', id);
       if (error) throw error;
+
+      // If deleted request was Approved, clean up its auto-generated attendance logs
+      if (targetReq && targetReq.status === 'Approved') {
+        const rangeStart = `${targetReq.start_date}T00:00:00+07:00`;
+        const rangeEnd = `${targetReq.end_date}T23:59:59.999+07:00`;
+        await supabase
+          .from('attendance_logs')
+          .delete()
+          .eq('user_id', targetReq.user_id)
+          .gte('check_in', rangeStart)
+          .lte('check_in', rangeEnd)
+          .ilike('notes', '%Auto-generated by Leave Request%');
+        loadMonthlyRecap(recapMonth, recapYear);
+      }
+
       loadLeaveRequests();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert('Gagal menghapus data: ' + err.message);
+      alert('Gagal menghapus data: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLeaveActionLoading(false);
     }
@@ -375,16 +432,19 @@ export default function AdminPage() {
       
       if (updateError) throw updateError;
 
+      const rangeStart = `${request.start_date}T00:00:00+07:00`;
+      const rangeEnd = `${request.end_date}T23:59:59.999+07:00`;
+
       // 2. If Approved, auto-insert attendance logs for those days
       if (newStatus === 'Approved') {
-        const startDate = new Date(request.start_date);
-        const endDate = new Date(request.end_date);
+        const [startY, startM, startD] = request.start_date.split('-').map(Number);
+        const [endY, endM, endD] = request.end_date.split('-').map(Number);
+        const curDate = new Date(startY, startM - 1, startD);
+        const stopDate = new Date(endY, endM - 1, endD);
         const logsToInsert = [];
 
         // Loop through each day from start to end
-        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-          // Skip Sunday if they don't work on Sunday, but for simplicity we insert it.
-          // The recap count can just sum them up or ignore Sundays if needed.
+        for (let d = new Date(curDate); d <= stopDate; d.setDate(d.getDate() + 1)) {
           const yyyy = d.getFullYear();
           const mm = String(d.getMonth() + 1).padStart(2, '0');
           const dd = String(d.getDate()).padStart(2, '0');
@@ -395,41 +455,50 @@ export default function AdminPage() {
             check_in: `${dateStr}T08:00:00+07:00`,
             check_out: `${dateStr}T17:00:00+07:00`,
             status: request.type,
+            latitude: geofence.factory_lat || -7.7828,
+            longitude: geofence.factory_lon || 110.3608,
             notes: `Auto-generated by Leave Request: ${request.reason}`
           });
         }
 
         if (logsToInsert.length > 0) {
+          // Remove any existing attendance on those dates first to prevent duplicate entries
+          await supabase
+            .from('attendance_logs')
+            .delete()
+            .eq('user_id', request.user_id)
+            .gte('check_in', rangeStart)
+            .lte('check_in', rangeEnd);
+
           const { error: insertError } = await supabase
             .from('attendance_logs')
             .insert(logsToInsert);
           
           if (insertError) {
             console.error('Error inserting auto logs:', insertError);
-            alert('Status diubah tapi gagal membuat log absensi otomatis.');
+            alert('Status diubah tapi gagal membuat log absensi otomatis: ' + insertError.message);
           }
         }
+      } else if (newStatus === 'Rejected' && request.status === 'Approved') {
+        // Clean up previously auto-generated logs if changing from Approved to Rejected
+        await supabase
+          .from('attendance_logs')
+          .delete()
+          .eq('user_id', request.user_id)
+          .gte('check_in', rangeStart)
+          .lte('check_in', rangeEnd)
+          .ilike('notes', '%Auto-generated by Leave Request%');
       }
 
       loadLeaveRequests();
       // Reload recap if needed
       loadMonthlyRecap(recapMonth, recapYear);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert('Terjadi kesalahan saat memproses izin: ' + err.message);
+      alert('Terjadi kesalahan saat memproses izin: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLeaveActionLoading(false);
     }
-  };
-
-  const loadNotifications = async () => {
-    setNotifLoading(true);
-    const { data } = await supabase
-      .from('notifications')
-      .select('*, profiles(full_name)')
-      .order('created_at', { ascending: false });
-    if (data) setNotifications(data);
-    setNotifLoading(false);
   };
 
   const handleSaveNotification = async (e: React.FormEvent) => {
@@ -462,56 +531,6 @@ export default function AdminPage() {
     await supabase.from('notifications').delete().eq('id', id);
     loadNotifications();
   };
-
-  const loadMonthlyRecap = async (month: number, year: number) => {
-    setRecapLoading(true);
-    try {
-      const start = new Date(year, month, 1).toISOString();
-      const end = new Date(year, month + 1, 0, 23, 59, 59, 999).toISOString();
-
-      let allData: any[] = [];
-      let from = 0;
-      const step = 1000;
-      let fetchMore = true;
-
-      while (fetchMore) {
-        const { data, error } = await supabase
-          .from('attendance_logs')
-          .select('*, profiles(nik, full_name)')
-          .gte('check_in', start)
-          .lte('check_in', end)
-          .order('check_in', { ascending: true })
-          .range(from, from + step - 1);
-
-        if (error) throw error;
-        
-        if (data && data.length > 0) {
-          allData = [...allData, ...data];
-          if (data.length < step) {
-            fetchMore = false;
-          } else {
-            from += step;
-          }
-        } else {
-          fetchMore = false;
-        }
-      }
-      
-      startTransition(() => {
-        setRecapLogs(allData as unknown as AttendanceLog[]);
-        setRecapLoading(false);
-      });
-    } catch (err) {
-      console.error('Error loading monthly recap:', err);
-      setRecapLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (configured) {
-      loadMonthlyRecap(recapMonth, recapYear);
-    }
-  }, [recapMonth, recapYear, configured]);
 
   // Sign out admin
   const handleLogout = async () => {
@@ -548,8 +567,8 @@ export default function AdminPage() {
       if (error) throw error;
       setGeofenceMessage('Pengaturan kantor dan jam kerja berhasil diperbarui!');
       loadAllDashboardData();
-    } catch (err: any) {
-      setGeofenceMessage(`Gagal memperbarui: ${err.message}`);
+    } catch (err: unknown) {
+      setGeofenceMessage(`Gagal memperbarui: ${(err instanceof Error ? err.message : String(err))}`);
     } finally {
       setGeofenceLoading(false);
     }
@@ -627,11 +646,11 @@ export default function AdminPage() {
         // Reload lists
         await loadAllDashboardData();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Save employee error:', err);
       setRegFeedback({
         success: false,
-        message: err.message || `Gagal memproses data karyawan.`
+        message: (err instanceof Error ? err.message : String(err)) || `Gagal memproses data karyawan.`
       });
     } finally {
       setRegLoading(false);
@@ -659,12 +678,12 @@ export default function AdminPage() {
         const ws = wb.Sheets[wsname];
         
         // Convert to array of arrays
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as (string | number | undefined)[][];
         if (rows.length <= 1) {
           throw new Error('File Excel kosong atau hanya berisi header.');
         }
 
-        const headers = rows[0];
+        const headers = rows[0] || [];
         const namaIdx = headers.findIndex(h => h && h.toString().toUpperCase().trim().includes('NAMA'));
         const nikIdx = headers.findIndex(h => h && h.toString().toUpperCase().trim().includes('NIK'));
         const roleIdx = headers.findIndex(h => h && (h.toString().toUpperCase().trim().includes('ROLE') || h.toString().toUpperCase().trim().includes('JABATAN')));
@@ -687,56 +706,71 @@ export default function AdminPage() {
 
         setImportProgress({ current: 0, total: validRows.length });
 
-        let successCount = 0;
-        let errorCount = 0;
-
-        for (let i = 0; i < validRows.length; i++) {
-          const row = validRows[i];
-          const name = row[namaIdx].toString().trim();
-          const nikVal = row[nikIdx].toString().trim();
-          
-          // Role matching: check if "ADMIN" (case-insensitive), otherwise "user"
-          const roleRaw = roleIdx !== -1 ? row[roleIdx]?.toString().trim() : '';
+        const userPayloads = validRows.map(row => {
+          const name = (row[namaIdx] ?? '').toString().trim();
+          const nikVal = (row[nikIdx] ?? '').toString().trim();
+          const roleRaw = roleIdx !== -1 ? (row[roleIdx] ?? '').toString().trim() : '';
           const roleVal = roleRaw.toUpperCase() === 'ADMIN' ? 'admin' : 'user';
 
-          // Date matching
           let tglDaftarVal = new Date();
           if (tglIdx !== -1 && row[tglIdx]) {
             const rawDate = row[tglIdx];
-            if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
-              tglDaftarVal = rawDate;
-            } else {
-              const parsed = Date.parse(rawDate.toString().trim());
-              if (!isNaN(parsed)) {
-                tglDaftarVal = new Date(parsed);
-              }
-            }
+            const parsed = Date.parse(String(rawDate).trim());
+            if (!isNaN(parsed)) tglDaftarVal = new Date(parsed);
           }
 
+          return {
+            nik: nikVal,
+            full_name: name,
+            role: roleVal,
+            passcode: '123456',
+            created_at: tglDaftarVal.toISOString()
+          };
+        });
+
+        // Fast Batch Import (High Speed)
+        try {
+          const { data: batchData, error: batchError } = await supabase.rpc('admin_create_users_batch', {
+            p_users: userPayloads
+          });
+
+          if (!batchError && batchData && batchData.success) {
+            setImportFeedback({
+              success: true,
+              message: `Import Selesai! Berhasil: ${batchData.success_count} karyawan. Gagal/Sudah Ada: ${batchData.fail_count} karyawan. (Passcode default: 123456)`
+            });
+            await loadAllDashboardData();
+            return;
+          }
+        } catch {
+          // Fallback to sequential if batch RPC is not yet created in user's DB
+        }
+
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (let i = 0; i < userPayloads.length; i++) {
+          const emp = userPayloads[i];
           try {
-            // Call the database function directly (bypasses Auth API rate limits!)
             const { data, error } = await supabase.rpc('admin_create_user', {
-              p_nik: nikVal,
-              p_full_name: name,
-              p_role: roleVal,
-              p_passcode: '123456', // default passcode
-              p_created_at: tglDaftarVal.toISOString()
+              p_nik: emp.nik,
+              p_full_name: emp.full_name,
+              p_role: emp.role,
+              p_passcode: emp.passcode,
+              p_created_at: emp.created_at
             });
 
             if (error) throw error;
-
             const res = data as { success: boolean; message: string };
-            if (!res.success) {
-              throw new Error(res.message);
-            }
+            if (!res.success) throw new Error(res.message);
 
             successCount++;
           } catch (err) {
-            console.error(`Gagal mendaftarkan NIK ${nikVal}:`, err);
+            console.error(`Gagal mendaftarkan NIK ${emp.nik}:`, err);
             errorCount++;
           }
 
-          setImportProgress(prev => prev ? { ...prev, current: i + 1 } : null);
+          setImportProgress({ current: i + 1, total: userPayloads.length });
         }
 
         setImportFeedback({
@@ -747,10 +781,10 @@ export default function AdminPage() {
         // Reload lists
         await loadAllDashboardData();
 
-      } catch (err: any) {
+      } catch (err: unknown) {
         setImportFeedback({
           success: false,
-          message: err.message || 'Gagal membaca atau memproses file Excel.'
+          message: (err instanceof Error ? err.message : String(err)) || 'Gagal membaca atau memproses file Excel.'
         });
       } finally {
         setImportLoading(false);
@@ -782,11 +816,11 @@ export default function AdminPage() {
 
       // Reload dashboard
       await loadAllDashboardData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setRegFeedback({
         success: false,
-        message: err.message || 'Gagal menghapus karyawan.'
+        message: (err instanceof Error ? err.message : String(err)) || 'Gagal menghapus karyawan.'
       });
     } finally {
       setEmployeeToDelete(null);
@@ -810,11 +844,11 @@ export default function AdminPage() {
       // Reload dashboard
       await loadAllDashboardData();
       setShowResetModal(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setRegFeedback({
         success: false,
-        message: err.message || 'Gagal mereset data karyawan.'
+        message: (err instanceof Error ? err.message : String(err)) || 'Gagal mereset data karyawan.'
       });
       setShowResetModal(false);
     } finally {
@@ -827,13 +861,13 @@ export default function AdminPage() {
     setEditingCell({ employee, day, log });
     
     if (log) {
-      const inDate = new Date(log.check_in);
+      const inDate = getWibDate(log.check_in);
       const inHrs = String(inDate.getHours()).padStart(2, '0');
       const inMins = String(inDate.getMinutes()).padStart(2, '0');
       setEditCheckIn(`${inHrs}:${inMins}`);
 
       if (log.check_out) {
-        const outDate = new Date(log.check_out);
+        const outDate = getWibDate(log.check_out);
         const outHrs = String(outDate.getHours()).padStart(2, '0');
         const outMins = String(outDate.getMinutes()).padStart(2, '0');
         setEditCheckOut(`${outHrs}:${outMins}`);
@@ -894,9 +928,9 @@ export default function AdminPage() {
 
       await loadMonthlyRecap(recapMonth, recapYear);
       setEditingCell(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving attendance edit:', err);
-      alert('Gagal menyimpan perubahan absensi: ' + err.message);
+      alert('Gagal menyimpan perubahan absensi: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSavingEdit(false);
     }
@@ -922,9 +956,9 @@ export default function AdminPage() {
 
       await loadMonthlyRecap(recapMonth, recapYear);
       setEditingCell(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error deleting attendance record:', err);
-      alert('Gagal menghapus absensi: ' + err.message);
+      alert('Gagal menghapus absensi: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSavingEdit(false);
     }
@@ -1071,6 +1105,99 @@ export default function AdminPage() {
     return `${hrs}j ${remainingMins}m`;
   };
 
+  // Memoized: filter and sort employee list
+  const processedEmployees = useMemo(() => {
+    let list = employees;
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim();
+      list = list.filter(emp =>
+        emp.full_name.toLowerCase().includes(term) ||
+        emp.nik.toLowerCase().includes(term)
+      );
+    }
+    return [...list].sort((a, b) => {
+      if (sortBy === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      if (sortBy === 'excel') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      if (sortBy === 'name') return a.full_name.localeCompare(b.full_name, 'id');
+      if (sortBy === 'nik') return a.nik.localeCompare(b.nik, undefined, { numeric: true });
+      return 0;
+    });
+  }, [employees, searchTerm, sortBy]);
+
+  // Memoized: O(1) lookup map: "userId_day" -> AttendanceLog
+  // Avoids O(n²) recapLogs.find() inside the render loop
+  const recapLogMap = useMemo(() => {
+    const map = new Map<string, typeof recapLogs[0]>();
+    for (const log of recapLogs) {
+      const d = getWibDate(log.check_in);
+      if (d.getFullYear() === recapYear && d.getMonth() === recapMonth) {
+        map.set(`${log.user_id}_${d.getDate()}`, log);
+      }
+    }
+    return map;
+  }, [recapLogs, recapYear, recapMonth]);
+
+  // Memoized: pre-computed per-employee recap stats (respects the custom date range)
+  const employeeRecapStats = useMemo(() => {
+    const statsMap = new Map<string, {
+      presentDays: typeof recapLogs;
+      countInRange: number;
+      countTotal: number;
+      totalLateMinutes: number;
+      totalOvertimeMinutes: number;
+    }>();
+    for (const emp of processedEmployees) {
+      if (emp.role !== 'user') continue;
+      const isWorkingAttendance = (status?: string) => {
+        return status ? !['Izin', 'Sakit', 'Cuti', 'Alpa'].includes(status) : false;
+      };
+      const presentDays = recapLogs.filter(l => l.user_id === emp.id && isWorkingAttendance(l.status));
+      // Count attendance within the custom date range
+      const inRange = presentDays.filter(l => {
+        const d = getWibDate(l.check_in).getDate();
+        return d >= recapStartDay && d <= recapEndDay;
+      });
+      const totalLateMinutes = inRange.reduce((acc, log) => {
+        return log.status === 'Terlambat'
+          ? acc + getMinutesLate(log.check_in, geofence.work_start_time)
+          : acc;
+      }, 0);
+      const totalOvertimeMinutes = inRange.reduce((acc, log) => acc + getOvertimeMinutes(log.check_out, geofence.work_end_time), 0);
+      statsMap.set(emp.id, {
+        presentDays,
+        countInRange: inRange.length,
+        countTotal: presentDays.length,
+        totalLateMinutes,
+        totalOvertimeMinutes,
+      });
+    }
+    return statsMap;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recapLogs, processedEmployees, geofence.work_start_time, geofence.work_end_time, recapStartDay, recapEndDay]);
+
+  // Memoized: days array for the selected month (filtered to the chosen range)
+  const daysInSelectedMonth = useMemo(
+    () => {
+      const totalDays = new Date(recapYear, recapMonth + 1, 0).getDate();
+      const clampedEnd = Math.min(recapEndDay, totalDays);
+      const clampedStart = Math.max(recapStartDay, 1);
+      return Array.from(
+        { length: Math.max(0, clampedEnd - clampedStart + 1) },
+        (_, i) => clampedStart + i
+      );
+    },
+    [recapYear, recapMonth, recapStartDay, recapEndDay]
+  );
+
+  // Memoized: Sunday lookup for the selected month
+  const sundaySet = useMemo(() => {
+    const s = new Set<number>();
+    for (const day of daysInSelectedMonth) {
+      if (new Date(recapYear, recapMonth, day).getDay() === 0) s.add(day);
+    }
+    return s;
+  }, [daysInSelectedMonth, recapYear, recapMonth]);
+
   // Export Monthly Recap Grid to XLSX file (styled)
   const handleExportRecapXLSX = () => {
     const activeEmployees = processedEmployees.filter(p => p.role === 'user');
@@ -1078,11 +1205,6 @@ export default function AdminPage() {
       alert('Tidak ada data karyawan untuk diekspor.');
       return;
     }
-
-    const indonesianMonths = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-    ];
 
     const totalDaysInMonth = new Date(recapYear, recapMonth + 1, 0).getDate();
     const clampedStart = Math.max(recapStartDay, 1);
@@ -1092,21 +1214,26 @@ export default function AdminPage() {
       { length: Math.max(0, clampedEnd - clampedStart + 1) },
       (_, i) => clampedStart + i
     );
-    const FIXED_COLS = 5; // No, Nama, NIK, Hadir(range), Total, Terlambat, Lembur
 
     // ── Build data rows ──────────────────────────────────────────────────────
+    const isWorkingAttendance = (status?: string) => {
+      return status ? !['Izin', 'Sakit', 'Cuti', 'Alpa'].includes(status) : false;
+    };
+
     const dataRows = activeEmployees.map((emp, rowIdx) => {
-      const presentDays = recapLogs.filter(l => l.user_id === emp.id);
+      const presentDays = recapLogs.filter(l => l.user_id === emp.id && isWorkingAttendance(l.status));
       const countTotal = presentDays.length;
       // Count within selected range
       const inRange = presentDays.filter(l => {
-        const d = new Date(l.check_in).getDate();
+        const d = getWibDate(l.check_in).getDate();
         return d >= clampedStart && d <= clampedEnd;
       });
       const countInRange = inRange.length;
 
       const totalLateMinutes = inRange.reduce((acc, log) => {
-        return acc + getMinutesLate(log.check_in, geofence.work_start_time);
+        return log.status === 'Terlambat'
+          ? acc + getMinutesLate(log.check_in, geofence.work_start_time)
+          : acc;
       }, 0);
       const totalOvertimeMinutes = inRange.reduce((acc, log) => {
         return acc + getOvertimeMinutes(log.check_out, geofence.work_end_time);
@@ -1114,17 +1241,15 @@ export default function AdminPage() {
 
       const dailyStatus = exportDays.map(day => {
         const log = recapLogs.find(l => {
-          const cDate = new Date(l.check_in);
+          const cDate = getWibDate(l.check_in);
           return l.user_id === emp.id &&
                  cDate.getFullYear() === recapYear &&
                  cDate.getMonth() === recapMonth &&
                  cDate.getDate() === day;
         });
         if (log) {
-          const timeInStr = new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
-          const timeOutStr = log.check_out
-            ? new Date(log.check_out).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')
-            : '--:--';
+          const timeInStr = formatWibTime(log.check_in);
+          const timeOutStr = log.check_out ? formatWibTime(log.check_out) : '--:--';
           return `${log.status} (${timeInStr} → ${timeOutStr})`;
         }
         // Check if Sunday
@@ -1146,7 +1271,7 @@ export default function AdminPage() {
 
     // ── Build worksheet data (array-of-arrays) ───────────────────────────────
     // Row 1: Title
-    const titleRow = [`REKAP BULANAN KEHADIRAN KARYAWAN — ${indonesianMonths[recapMonth].toUpperCase()} ${recapYear} (Tgl ${clampedStart}–${clampedEnd})`];
+    const titleRow = [`REKAP BULANAN KEHADIRAN KARYAWAN — ${INDONESIAN_MONTHS[recapMonth].toUpperCase()} ${recapYear} (Tgl ${clampedStart}–${clampedEnd})`];
 
     // Row 2: blank
     const blankRow: string[] = [];
@@ -1291,8 +1416,8 @@ export default function AdminPage() {
     }
 
     // ── Export ───────────────────────────────────────────────────────────────
-    const sheetName = `Rekap ${indonesianMonths[recapMonth]} ${recapYear}`;
-    const fileName = `rekap_bulanan_${indonesianMonths[recapMonth]}_${recapYear}_tgl${clampedStart}-${clampedEnd}.xlsx`;
+    const sheetName = `Rekap ${INDONESIAN_MONTHS[recapMonth]} ${recapYear}`;
+    const fileName = `rekap_bulanan_${INDONESIAN_MONTHS[recapMonth]}_${recapYear}_tgl${clampedStart}-${clampedEnd}.xlsx`;
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     XLSX.writeFile(wb, fileName, { cellStyles: true });
   };
@@ -1301,8 +1426,7 @@ export default function AdminPage() {
   const handleResetMonthlyRecap = async () => {
     setResetRecapLoading(true);
     try {
-      const start = new Date(recapYear, recapMonth, 1).toISOString();
-      const end = new Date(recapYear, recapMonth + 1, 0, 23, 59, 59, 999).toISOString();
+      const { start, end } = getMonthRangeWib(recapYear, recapMonth);
 
       const { error } = await supabase
         .from('attendance_logs')
@@ -1314,9 +1438,9 @@ export default function AdminPage() {
 
       await loadMonthlyRecap(recapMonth, recapYear);
       setShowResetRecapModal(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error resetting recap:', err);
-      alert('Gagal mereset data: ' + err.message);
+      alert('Gagal mereset data: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setResetRecapLoading(false);
     }
@@ -1363,13 +1487,13 @@ export default function AdminPage() {
         const wb = XLSX.read(bstr, { type: 'binary' });
         const sheetName = wb.SheetNames.find((n: string) => n.toUpperCase().includes('LAPORAN GAJI')) || wb.SheetNames[0];
         const ws = wb.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as unknown[][];
         let headerRowIdx = -1;
         for (let i = 0; i < Math.min(rows.length, 15); i++) {
-          if (rows[i].some((c: any) => c?.toString().toUpperCase().trim() === 'NIK')) { headerRowIdx = i; break; }
+          if (rows[i].some((c: unknown) => String(c ?? '').toUpperCase().trim() === 'NIK')) { headerRowIdx = i; break; }
         }
         if (headerRowIdx === -1) throw new Error('Header NIK tidak ditemukan di file Excel.');
-        const headers: string[] = rows[headerRowIdx].map((h: any) => h?.toString().trim() || '');
+        const headers: string[] = rows[headerRowIdx].map((h: unknown) => String(h ?? '').trim());
         const nikIdx = headers.findIndex(h => h.toUpperCase() === 'NIK');
         if (nikIdx === -1) throw new Error('Kolom NIK tidak ditemukan.');
         const dataRows = rows.slice(headerRowIdx + 1).filter(row => row[nikIdx] !== null && row[nikIdx] !== undefined && row[nikIdx] !== '');
@@ -1377,7 +1501,7 @@ export default function AdminPage() {
         setPayslipImportProgress({ current: 0, total: dataRows.length });
         const colMap: Record<string, number> = {};
         headers.forEach((h, i) => { if (h) colMap[h] = i; });
-        const getVal = (row: any[], key: string) => { const idx = colMap[key]; return idx !== undefined ? (row[idx] ?? null) : null; };
+        const getVal = (row: unknown[], key: string): unknown => { const idx = colMap[key]; return idx !== undefined ? (row[idx] ?? null) : null; };
         const { data: allProfiles } = await supabase.from('profiles').select('id, nik').eq('role', 'user');
         const profileMap = new Map<string, string>();
         for (const p of (allProfiles || [])) profileMap.set(String(p.nik).trim(), p.id);
@@ -1385,12 +1509,25 @@ export default function AdminPage() {
         const adminId = session?.user?.id;
         let successCount = 0, notFoundCount = 0, errorCount = 0;
         const notFoundNiks: string[] = [];
+        const recordsToUpsert: Array<{
+          user_id: string;
+          nik: string;
+          period_month: number;
+          period_year: number;
+          period_label: string;
+          data: Record<string, unknown>;
+          uploaded_by?: string;
+        }> = [];
         for (let i = 0; i < dataRows.length; i++) {
           const row = dataRows[i];
           const nik = String(row[nikIdx]).trim();
           const userId = profileMap.get(nik);
-          if (!userId) { notFoundCount++; notFoundNiks.push(nik); setPayslipImportProgress({ current: i + 1, total: dataRows.length }); continue; }
-          const rowData: Record<string, any> = {
+          if (!userId) { 
+            notFoundCount++; 
+            notFoundNiks.push(nik); 
+            continue; 
+          }
+          const rowData: Record<string, unknown> = {
             no_urut: getVal(row, 'No. Urut'), nama: getVal(row, 'Nama'), jabatan: getVal(row, 'Jabatan'),
             gaji_pokok: getVal(row, 'Gaji Pokok'), upah_per_hari: getVal(row, 'Upah /Hari'), total_masuk: getVal(row, 'Total Masuk'),
             total_gaji_a: getVal(row, 'Total Gaji A'), premi: getVal(row, 'Premi'), tunjangan: getVal(row, 'Tunjangan'),
@@ -1402,21 +1539,36 @@ export default function AdminPage() {
             no_rekening: getVal(row, 'No Rekening') !== null ? String(getVal(row, 'No Rekening')) : null,
             no_whatsapp: getVal(row, 'No WhatsApp') !== null ? String(getVal(row, 'No WhatsApp')) : null,
           };
+          recordsToUpsert.push({
+            user_id: userId,
+            nik,
+            period_month: payslipMonth + 1,
+            period_year: payslipYear,
+            period_label: payslipLabel,
+            data: rowData,
+            uploaded_by: adminId
+          });
+          setPayslipImportProgress({ current: i + 1, total: dataRows.length });
+        }
+
+        if (recordsToUpsert.length > 0) {
           try {
             const { error } = await supabase.from('payslips').upsert(
-              { user_id: userId, nik, period_month: payslipMonth + 1, period_year: payslipYear, period_label: payslipLabel, data: rowData, uploaded_by: adminId },
+              recordsToUpsert,
               { onConflict: 'user_id,period_month,period_year,period_label' }
             );
             if (error) throw error;
-            successCount++;
-          } catch (err) { console.error(`Error NIK ${nik}:`, err); errorCount++; }
-          setPayslipImportProgress({ current: i + 1, total: dataRows.length });
+            successCount = recordsToUpsert.length;
+          } catch (err: unknown) {
+            console.error('Batch payslip upsert error:', err);
+            errorCount = recordsToUpsert.length;
+          }
         }
         const notFoundMsg = notFoundNiks.length > 0 ? ` NIK tidak terdaftar: ${notFoundNiks.slice(0, 5).join(', ')}${notFoundNiks.length > 5 ? ` +${notFoundNiks.length - 5} lainnya` : ''}.` : '';
         setPayslipFeedback({ success: errorCount === 0, message: `Import ${iMonths[payslipMonth]} ${payslipYear} (${payslipLabel}) selesai! ✅ Berhasil: ${successCount} | ❌ Error: ${errorCount} | ⚠️ NIK tidak ditemukan: ${notFoundCount}.${notFoundMsg}` });
         await loadPayslipList();
-      } catch (err: any) {
-        setPayslipFeedback({ success: false, message: err.message || 'Gagal memproses file Excel.' });
+      } catch (err: unknown) {
+        setPayslipFeedback({ success: false, message: (err instanceof Error ? err.message : String(err)) || 'Gagal memproses file Excel.' });
       } finally { setPayslipImportLoading(false); setPayslipImportProgress(null); }
     };
     reader.readAsBinaryString(file);
@@ -1430,99 +1582,10 @@ export default function AdminPage() {
       await loadPayslipList();
       const mNames = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des'];
       setPayslipFeedback({ success: true, message: `Slip gaji ${mNames[month - 1]} ${year} (${label}) berhasil dihapus.` });
-    } catch (err: any) {
-      setPayslipFeedback({ success: false, message: 'Gagal menghapus: ' + err.message });
+    } catch (err: unknown) {
+      setPayslipFeedback({ success: false, message: 'Gagal menghapus: ' + (err instanceof Error ? err.message : String(err)) });
     }
   };
-
-  // Memoized: filter and sort employee list
-  const processedEmployees = useMemo(() => {
-    let result = [...employees];
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase().trim();
-      result = result.filter(emp =>
-        emp.full_name.toLowerCase().includes(term) ||
-        emp.nik.toLowerCase().includes(term)
-      );
-    }
-    if (sortBy === 'newest') {
-      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    } else if (sortBy === 'excel') {
-      result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    } else if (sortBy === 'name') {
-      result.sort((a, b) => a.full_name.localeCompare(b.full_name, 'id'));
-    } else if (sortBy === 'nik') {
-      result.sort((a, b) => a.nik.localeCompare(b.nik, undefined, { numeric: true }));
-    }
-    return result;
-  }, [employees, searchTerm, sortBy]);
-
-  // Memoized: O(1) lookup map: "userId_day" -> AttendanceLog
-  // Avoids O(n²) recapLogs.find() inside the render loop
-  const recapLogMap = useMemo(() => {
-    const map = new Map<string, typeof recapLogs[0]>();
-    for (const log of recapLogs) {
-      const d = new Date(log.check_in);
-      if (d.getFullYear() === recapYear && d.getMonth() === recapMonth) {
-        map.set(`${log.user_id}_${d.getDate()}`, log);
-      }
-    }
-    return map;
-  }, [recapLogs, recapYear, recapMonth]);
-
-  // Memoized: pre-computed per-employee recap stats (respects the custom date range)
-  const employeeRecapStats = useMemo(() => {
-    const statsMap = new Map<string, {
-      presentDays: typeof recapLogs;
-      countInRange: number;
-      countTotal: number;
-      totalLateMinutes: number;
-      totalOvertimeMinutes: number;
-    }>();
-    for (const emp of processedEmployees) {
-      if (emp.role !== 'user') continue;
-      const presentDays = recapLogs.filter(l => l.user_id === emp.id);
-      // Count attendance within the custom date range
-      const inRange = presentDays.filter(l => {
-        const d = new Date(l.check_in).getDate();
-        return d >= recapStartDay && d <= recapEndDay;
-      });
-      const totalLateMinutes = inRange.reduce((acc, log) => acc + getMinutesLate(log.check_in, geofence.work_start_time), 0);
-      const totalOvertimeMinutes = inRange.reduce((acc, log) => acc + getOvertimeMinutes(log.check_out, geofence.work_end_time), 0);
-      statsMap.set(emp.id, {
-        presentDays,
-        countInRange: inRange.length,
-        countTotal: presentDays.length,
-        totalLateMinutes,
-        totalOvertimeMinutes,
-      });
-    }
-    return statsMap;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recapLogs, processedEmployees, geofence.work_start_time, geofence.work_end_time, recapStartDay, recapEndDay]);
-
-  // Memoized: days array for the selected month (filtered to the chosen range)
-  const daysInSelectedMonth = useMemo(
-    () => {
-      const totalDays = new Date(recapYear, recapMonth + 1, 0).getDate();
-      const clampedEnd = Math.min(recapEndDay, totalDays);
-      const clampedStart = Math.max(recapStartDay, 1);
-      return Array.from(
-        { length: Math.max(0, clampedEnd - clampedStart + 1) },
-        (_, i) => clampedStart + i
-      );
-    },
-    [recapYear, recapMonth, recapStartDay, recapEndDay]
-  );
-
-  // Memoized: Sunday lookup for the selected month
-  const sundaySet = useMemo(() => {
-    const s = new Set<number>();
-    for (const day of daysInSelectedMonth) {
-      if (new Date(recapYear, recapMonth, day).getDay() === 0) s.add(day);
-    }
-    return s;
-  }, [daysInSelectedMonth, recapYear, recapMonth]);
 
   if (loading) {
     return (
@@ -1539,195 +1602,32 @@ export default function AdminPage() {
 
   return (
     <div className="bg-gray-100 font-sans antialiased text-gray-800 flex min-h-screen">
-
-      {/* MOBILE SIDEBAR BACKDROP OVERLAY — always in DOM, fades via opacity */}
-      <div
-        className={`fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 md:hidden transition-opacity duration-300 ease-in-out ${
-          isMobileSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={closeMobileSidebar}
-        aria-hidden="true"
+      {/* SIDEBAR */}
+      <AdminSidebar
+        activeTab={activeTab}
+        onSelectTab={(tab) => {
+          if (tab === 'recap') {
+            startTransition(() => {
+              setActiveTab('recap');
+            });
+          } else {
+            setActiveTab(tab);
+          }
+          if (tab === 'payslip') loadPayslipList();
+          if (tab === 'notifications') loadNotifications();
+          if (tab === 'leave') loadLeaveRequests();
+        }}
+        isMobileSidebarOpen={isMobileSidebarOpen}
+        onCloseMobileSidebar={closeMobileSidebar}
+        adminProfile={adminProfile}
+        onLogoutClick={() => setShowLogoutModal(true)}
       />
 
-      {/* SIDEBAR (NAVIGASI KIRI) */}
-      <aside
-        style={{ willChange: 'transform' }}
-        className={`w-72 bg-white text-slate-800 flex flex-col justify-between border-r border-slate-100 shadow-xl fixed md:relative inset-y-0 left-0 z-40 md:w-64 md:translate-x-0 md:flex md:shadow-sm
-          transition-[transform,box-shadow] duration-[350ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] ${
-          isMobileSidebarOpen ? 'translate-x-0 flex' : '-translate-x-full'
-        }`}
-      >
-        <div>
-          {/* Logo / Judul */}
-          <div className="p-6 flex items-center gap-3 border-b border-slate-100">
-            <img src="/favicon.png" alt="Great Attendance Logo" className="w-10 h-10 rounded-xl shadow-md shadow-orange-500/10" />
-            <div>
-              <h1 className="font-black tracking-wide leading-tight text-sm text-slate-900">Great Attendance</h1>
-              <p className="text-[9px] text-slate-400 uppercase tracking-widest font-extrabold">Admin Panel</p>
-            </div>
-          </div>
-          
-          {/* Menu Navigasi */}
-          <nav className="p-4 space-y-1">
-            <button
-              onClick={() => { setActiveTab('dashboard'); closeMobileSidebar(); }}
-              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
-                transition-all duration-200 ease-out ${
-                activeTab === 'dashboard'
-                  ? 'bg-orange-50 text-orange-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'dashboard' ? 'text-orange-500 scale-110' : ''
-                }`}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-              </svg>
-              Dashboard Monitor
-            </button>
-            
-             <button
-              onClick={() => { setActiveTab('employees'); closeMobileSidebar(); }}
-              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
-                transition-all duration-200 ease-out ${
-                activeTab === 'employees'
-                  ? 'bg-orange-50 text-orange-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'employees' ? 'text-orange-500 scale-110' : ''
-                }`}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-              </svg>
-              Kelola Karyawan
-            </button>
-
-            <button
-              onClick={() => { startTransition(() => { setActiveTab('recap'); }); closeMobileSidebar(); }}
-              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
-                transition-all duration-200 ease-out ${
-                activeTab === 'recap'
-                  ? 'bg-orange-50 text-orange-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'recap' ? 'text-orange-500 scale-110' : ''
-                }`}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-              </svg>
-              Rekap Bulanan
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('geofencing'); closeMobileSidebar(); }}
-              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
-                transition-all duration-200 ease-out ${
-                activeTab === 'geofencing'
-                  ? 'bg-orange-50 text-orange-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'geofencing' ? 'text-orange-500 scale-110' : ''
-                }`}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774a1.125 1.125 0 01.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738a1.125 1.125 0 01-.12 1.45l-.774.773a1.125 1.125 0 01-1.45.12l-.737-.527c-.35-.25-.806-.272-1.204-.107-.397.165-.71.505-.78.93l-.15.893c-.09.543-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.149-.894c-.07-.425-.383-.765-.78-.93-.398-.165-.854-.143-1.204.107l-.738.527a1.125 1.125 0 01-1.45-.12l-.774-.772a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.11v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.774a1.125 1.125 0 011.45-.12l.738.527c.35.25.806.272 1.204.107.397-.165.71-.505.78-.93l.15-.893z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Pengaturan Kantor
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('payslip'); loadPayslipList(); closeMobileSidebar(); }}
-              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
-                transition-all duration-200 ease-out ${
-                activeTab === 'payslip'
-                  ? 'bg-orange-50 text-orange-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'payslip' ? 'text-orange-500 scale-110' : ''
-                }`}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
-              Kelola Slip Gaji
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('notifications'); loadNotifications(); closeMobileSidebar(); }}
-              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
-                transition-all duration-200 ease-out ${
-                activeTab === 'notifications'
-                  ? 'bg-orange-50 text-orange-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'notifications' ? 'text-orange-500 scale-110' : ''
-                }`}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0M3.124 7.5A8.969 8.969 0 015.292 3m13.416 0a8.969 8.969 0 012.168 4.5" />
-              </svg>
-              Kelola Notifikasi
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('leave'); loadLeaveRequests(); closeMobileSidebar(); }}
-              className={`relative w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm text-left
-                transition-all duration-200 ease-out ${
-                activeTab === 'leave'
-                  ? 'bg-orange-50 text-orange-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'leave' ? 'text-orange-500 scale-110' : ''
-                }`}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-              </svg>
-              Kelola Cuti & Izin
-            </button>
-          </nav>
-        </div>
- 
-        {/* Profil Admin Singkat (Bawah) */}
-        <div className="p-4 border-t border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center font-bold text-sm text-white shadow-md shadow-orange-500/10">
-              {adminProfile?.full_name[0]?.toUpperCase() || 'A'}
-            </div>
-            <div>
-              <p className="text-xs font-black block text-slate-800">{adminProfile?.full_name || 'Admin'}</p>
-              <p className="text-[10px] text-slate-400 font-extrabold uppercase">{adminProfile?.role || 'Super Admin'}</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => setShowLogoutModal(true)}
-            title="Keluar"
-            className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition duration-200 cursor-pointer"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-            </svg>
-          </button>
-        </div>
-      </aside>
- 
-      {/* AREA UTAMA Halaman (Kanan) */}
+      {/* AREA UTAMA (KANAN) */}
       <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto h-screen">
-        
         {/* TOPBAR */}
         <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 md:px-8 py-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
-            {/* Hamburger Button - Mobile Only */}
             <button
               onClick={() => setIsMobileSidebarOpen(true)}
               className="md:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition cursor-pointer"
@@ -1744,6 +1644,7 @@ export default function AdminPage() {
               {activeTab === 'geofencing' && 'Pengaturan Kantor'}
               {activeTab === 'payslip' && 'Kelola Slip Gaji'}
               {activeTab === 'notifications' && 'Kelola Notifikasi'}
+              {activeTab === 'leave' && 'Kelola Cuti & Izin'}
             </h2>
           </div>
           <div className="text-xs md:text-sm font-bold text-gray-500 bg-gray-50 border px-3 md:px-4 py-2 rounded-xl shrink-0">
@@ -1751,1675 +1652,181 @@ export default function AdminPage() {
           </div>
         </header>
 
-        {/* TAB 1: DASHBOARD MONITOR */}
         {activeTab === 'dashboard' && (
-          <div className="p-4 md:p-8 space-y-5 md:space-y-8 flex-1 animate-fade-in">
-            
-            {/* BARIS STATISTIK */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
-              {/* Total Karyawan */}
-              <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
-                <div>
-                  <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">Total Karyawan</p>
-                  <p className="text-2xl md:text-3xl font-black mt-1 text-gray-900">{stats.totalEmployees} <span className="text-xs font-medium text-gray-400">Orang</span></p>
-                </div>
-                <div className="p-2 md:p-3 bg-blue-50 text-blue-600 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
-                </div>
-              </div>
-              {/* Hadir */}
-              <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
-                <div>
-                  <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">Sudah Absen</p>
-                  <p className="text-2xl md:text-3xl font-black mt-1 text-emerald-600">{stats.checkedIn} <span className="text-xs font-medium text-gray-400">Orang</span></p>
-                </div>
-                <div className="p-2 md:p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </div>
-              </div>
-              {/* Terlambat */}
-              <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
-                <div>
-                  <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">Terlambat</p>
-                  <p className="text-2xl md:text-3xl font-black mt-1 text-amber-500">{stats.late} <span className="text-xs font-medium text-gray-400">Orang</span></p>
-                </div>
-                <div className="p-2 md:p-3 bg-amber-50 text-amber-500 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </div>
-              </div>
-              {/* Belum Hadir */}
-              <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
-                <div>
-                  <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">Belum Absen</p>
-                  <p className="text-2xl md:text-3xl font-black mt-1 text-red-500">{stats.absent} <span className="text-xs font-medium text-gray-400">Orang</span></p>
-                </div>
-                <div className="p-2 md:p-3 bg-red-50 text-red-500 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </div>
-              </div>
-            </div>
-
-            {/* GRAFIK ANALITIK */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
-              {/* Tren Kehadiran Mingguan (Line Chart) */}
-              <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2 hover:shadow-md transition duration-300">
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Tren Kehadiran (7 Hari)</h3>
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={weeklyStats} margin={{ top: 5, right: 20, bottom: 5, left: -20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="date" tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                      <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }} />
-                      <Line type="monotone" dataKey="hadir" name="Karyawan Hadir" stroke="#f97316" strokeWidth={3} dot={{r: 4, fill: '#f97316', strokeWidth: 2, stroke: '#fff'}} activeDot={{r: 6}} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Komposisi Hari Ini (Pie Chart) */}
-              <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition duration-300">
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Status Hari Ini</h3>
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: 'Tepat Waktu', value: Math.max(0, stats.checkedIn - stats.late) },
-                          { name: 'Terlambat', value: stats.late },
-                          { name: 'Belum Absen', value: stats.absent }
-                        ].filter(d => d.value > 0)}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        { [
-                          { name: 'Tepat Waktu', value: Math.max(0, stats.checkedIn - stats.late) },
-                          { name: 'Terlambat', value: stats.late },
-                          { name: 'Belum Absen', value: stats.absent }
-                        ].filter(d => d.value > 0).map((entry, index) => {
-                          const colors = { 'Tepat Waktu': '#10b981', 'Terlambat': '#f59e0b', 'Belum Absen': '#ef4444' };
-                          return <Cell key={`cell-${index}`} fill={colors[entry.name as keyof typeof colors]} />;
-                        })}
-                      </Pie>
-                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }} />
-                      <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingTop: '10px' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-
-            {/* LAYOUT DUA KOLOM */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
-              
-              {/* Kiri: Tabel Presensi Hari Ini */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 lg:col-span-2">
-                <div className="flex justify-between items-center mb-4 md:mb-6">
-                  <h3 className="text-sm md:text-lg font-bold text-gray-800">Aktivitas Presensi Hari Ini</h3>
-                  <button 
-                    onClick={handleExportCSV}
-                    className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 md:px-4 py-2 md:py-2.5 rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition active:scale-95"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                    <span className="hidden sm:inline">Ekspor</span> CSV
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto max-h-[400px] md:max-h-[500px] overflow-y-auto border border-slate-100/80 rounded-2xl shadow-inner bg-slate-50/20">
-                  <table className="w-full text-left border-collapse min-w-[400px]">
-                    <thead className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-md shadow-[0_1px_0_rgba(241,245,249,1)]">
-                      <tr className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                        <th className="py-3 px-3 md:px-4 rounded-l-xl">Nama / NIK</th>
-                        <th className="py-3 px-3 md:px-4">Masuk</th>
-                        <th className="py-3 px-3 md:px-4">Pulang</th>
-                        <th className="py-3 px-3 md:px-4">Lembur</th>
-                        <th className="py-3 px-3 md:px-4 rounded-r-xl">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-xs md:text-sm divide-y divide-gray-50 font-bold text-gray-700">
-                      {logs.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="py-8 text-center text-gray-400 font-bold text-xs">
-                            Belum ada aktivitas presensi hari ini.
-                          </td>
-                        </tr>
-                      ) : (
-                        logs.map((log) => {
-                          const timeIn = new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
-                          const timeOut = log.check_out 
-                            ? new Date(log.check_out).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')
-                            : '--:--';
-
-                          let badgeClass = '';
-                          if (log.status === 'Tepat Waktu' || log.status === 'Sudah Pulang') {
-                            badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-100';
-                          } else if (log.status === 'Terlambat') {
-                            badgeClass = 'bg-amber-50 text-amber-700 border-amber-100';
-                          }
-
-                          const overtimeMins = getOvertimeMinutes(log.check_out, geofence.work_end_time);
-
-                          return (
-                            <tr key={log.id} className="hover:bg-gray-50/50 transition">
-                              <td className="py-3 px-3 md:px-4">
-                                <p className="font-extrabold text-gray-900 text-xs md:text-sm">{log.profiles?.full_name || 'Karyawan'}</p>
-                                <p className="text-[10px] text-gray-400 font-bold">NIK: {log.profiles?.nik || '-'}</p>
-                              </td>
-                              <td className="py-3 px-3 md:px-4 text-gray-600">{timeIn}</td>
-                              <td className="py-3 px-3 md:px-4 text-gray-600">{timeOut}</td>
-                              <td className="py-3 px-3 md:px-4">
-                                {overtimeMins > 0 ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] md:text-xs px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-100 font-bold">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3 h-3">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    {formatOvertimeMinutes(overtimeMins)}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-300 text-xs font-bold">—</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-3 md:px-4">
-                                <span className={`inline-flex text-[10px] md:text-xs px-2 py-0.5 rounded-full border ${badgeClass}`}>
-                                  {log.status === 'Tepat Waktu' ? '✓ Tepat' : log.status === 'Terlambat' ? `Telat` : log.status}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Kanan: Ringkasan Pengaturan Geofence Cepat */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between h-fit space-y-6">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-2">Titik Pabrik Aktif</h3>
-                  <p className="text-xs text-gray-400 mb-4 leading-relaxed">Koordinat yang digunakan oleh HP karyawan untuk validasi geofencing.</p>
-                  
-                  <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-gray-400">Garis Lintang (Latitude)</p>
-                      <p className="text-sm font-extrabold text-gray-800">{geofence.factory_lat}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-gray-400">Garis Bujur (Longitude)</p>
-                      <p className="text-sm font-extrabold text-gray-800">{geofence.factory_lon}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-gray-400">Jarak Radius Maksimal</p>
-                      <p className="text-sm font-extrabold text-orange-600">{geofence.radius_meters} Meter</p>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setActiveTab('geofencing')}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3.5 rounded-xl transition shadow-md active:scale-95"
-                >
-                  Ubah Koordinat Area
-                </button>
-              </div>
-
-            </div>
-
-          </div>
+          <DashboardOverview
+            stats={stats}
+            weeklyStats={weeklyStats}
+            logs={logs}
+            geofence={geofence}
+            getOvertimeMinutes={getOvertimeMinutes}
+            formatOvertimeMinutes={formatOvertimeMinutes}
+            onExportCSV={handleExportCSV}
+            onNavigateToGeofence={() => setActiveTab('geofencing')}
+          />
         )}
 
-        {/* TAB 2: KELOLA KARYAWAN */}
         {activeTab === 'employees' && (
-          <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8 flex-1 animate-fade-in">
-            
-            {/* Kiri: Daftar Karyawan Terdaftar */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 lg:col-span-2">
-              <div className="flex flex-wrap justify-between items-center gap-3 mb-4 md:mb-6">
-                <h3 className="text-sm md:text-lg font-bold text-gray-800">Daftar Karyawan Terdaftar</h3>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowResetModal(true)}
-                    className="hover-lift border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs py-2 px-3 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                    </svg>
-                    <span className="hidden sm:inline">Reset</span> Data
-                  </button>
-
-                  <input
-                    type="file"
-                    id="excel-import"
-                    accept=".xlsx, .xls"
-                    className="hidden"
-                    onChange={handleImportExcel}
-                  />
-                  <label
-                    htmlFor="excel-import"
-                    className="hover-lift bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Import
-                  </label>
-                </div>
-              </div>
-
-              {importFeedback && (
-                <div className={`p-4 rounded-xl mb-5 text-xs font-bold border flex items-center justify-between ${
-                  importFeedback.success ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'
-                }`}>
-                  <span>{importFeedback.message}</span>
-                  <button 
-                    onClick={() => setImportFeedback(null)} 
-                    className="text-slate-400 hover:text-slate-600 font-bold ml-2 cursor-pointer"
-                  >
-                    Tutup
-                  </button>
-                </div>
-              )}
-              
-              {/* FILTER DAN SEARCH BAR */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 bg-slate-50/60 p-4 rounded-2xl border border-slate-100">
-                <div className="sm:col-span-2">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Cari Karyawan (Nama / NIK)</label>
-                  <div className="relative flex items-center">
-                    <input
-                      type="text"
-                      placeholder="Masukkan nama atau NIK..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full bg-white border border-gray-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 shadow-sm transition-all"
-                    />
-                    {searchTerm && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchTerm('')}
-                        className="absolute right-3.5 text-slate-400 hover:text-slate-600 font-extrabold text-xs cursor-pointer focus:outline-none"
-                      >
-                        Batal
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Urutan Data Karyawan</label>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as any)}
-                    className="w-full bg-white border border-gray-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer shadow-sm"
-                  >
-                    <option value="newest">Paling Baru Didaftarkan</option>
-                    <option value="excel">Sesuai Urutan File Excel</option>
-                    <option value="name">Nama Karyawan (A - Z)</option>
-                    <option value="nik">Nomor NIK (Terkecil)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto max-h-[550px] overflow-y-auto border border-slate-100/80 rounded-2xl shadow-inner bg-slate-50/20">
-                <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-md shadow-[0_1px_0_rgba(241,245,249,1)]">
-                    <tr className="text-xs font-bold text-gray-400 uppercase">
-                      <th className="py-3 px-4 rounded-l-xl">Nama Karyawan</th>
-                      <th className="py-3 px-4">NIK</th>
-                      <th className="py-3 px-4">Role / Jabatan</th>
-                      <th className="py-3 px-4">PIN Passcode</th>
-                      <th className="py-3 px-4">Tgl Daftar</th>
-                      <th className="py-3 px-4 rounded-r-xl text-center">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm divide-y divide-gray-50 font-bold text-gray-700">
-                    {processedEmployees.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-6 text-center text-gray-400 font-bold">
-                          {searchTerm ? 'Tidak ditemukan karyawan yang cocok.' : 'Belum ada data karyawan.'}
-                        </td>
-                      </tr>
-                    ) : (
-                      processedEmployees.map((emp) => {
-                        const dateReg = new Date(emp.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-                        return (
-                          <tr key={emp.id} className="hover:bg-gray-50/50 transition">
-                            <td className="py-3.5 px-4 text-gray-900 font-extrabold">{emp.full_name}</td>
-                            <td className="py-3.5 px-4 text-gray-600">{emp.nik}</td>
-                            <td className="py-3.5 px-4">
-                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                                emp.role === 'admin' ? 'bg-orange-50 text-orange-600 border border-orange-100' : 'bg-slate-50 text-slate-600 border border-slate-100'
-                              }`}>
-                                {emp.role === 'admin' ? 'Admin' : 'Karyawan'}
-                              </span>
-                            </td>
-                            <td className="py-3.5 px-4 font-mono text-xs">
-                              <div className="flex items-center gap-2">
-                                <span>{visiblePasscodes[emp.id] ? emp.passcode || '123456' : '••••••'}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => togglePasscodeVisibility(emp.id)}
-                                  className="text-slate-400 hover:text-slate-600 focus:outline-none p-1 rounded hover:bg-slate-50 transition cursor-pointer"
-                                  title={visiblePasscodes[emp.id] ? "Sembunyikan" : "Tampilkan"}
-                                >
-                                  {visiblePasscodes[emp.id] ? (
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                                    </svg>
-                                  ) : (
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    </svg>
-                                  )}
-                                </button>
-                              </div>
-                            </td>
-                            <td className="py-3.5 px-4 text-gray-400 text-xs">{dateReg}</td>
-                            <td className="py-3.5 px-4 text-center">
-                              <div className="flex justify-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartEdit(emp)}
-                                  className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-1.5 rounded-xl transition cursor-pointer"
-                                  title="Edit Karyawan"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
-                                  </svg>
-                                </button>
-                                {emp.id !== currentUser?.id && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setEmployeeToDelete(emp)}
-                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-xl transition cursor-pointer"
-                                    title="Hapus Karyawan"
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                                    </svg>
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Kanan: Form Registrasi / Edit Karyawan */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 h-fit animate-fade-in" key={editingEmployee ? 'edit' : 'register'}>
-              <h3 className="text-sm md:text-lg font-bold text-gray-800 mb-1 md:mb-2">
-                {editingEmployee ? 'Edit Karyawan' : 'Daftarkan Karyawan Baru'}
-              </h3>
-              <p className="text-xs text-gray-400 mb-6 leading-relaxed">
-                {editingEmployee 
-                  ? 'Ubah rincian profil, jabatan, atau passcode pin untuk karyawan ini.' 
-                  : 'Buat akun login presensi bagi karyawan baru. Gunakan NIK yang valid dan passcode angka.'}
-              </p>
-
-              {regFeedback && (
-                <div className={`p-4 rounded-xl mb-5 text-xs font-bold border ${
-                  regFeedback.success ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'
-                }`}>
-                  {regFeedback.message}
-                </div>
-              )}
-
-              <form onSubmit={handleSaveEmployee} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Nomor NIK</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: 20260199"
-                    value={newNik}
-                    onChange={(e) => setNewNik(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Nama Lengkap</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nama lengkap karyawan"
-                    value={newFullName}
-                    onChange={(e) => setNewFullName(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">PIN Passcode (6 Angka)</label>
-                  <input
-                    type="password"
-                    pattern="[0-9]*"
-                    maxLength={6}
-                    required
-                    placeholder="Contoh: 123456"
-                    value={newPasscode}
-                    onChange={(e) => setNewPasscode(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold text-center tracking-widest focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">Role Jabatan</label>
-                  <select
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value as 'user' | 'admin')}
-                    className="w-full bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                  >
-                    <option value="user">Karyawan Biasa</option>
-                    <option value="admin">Administrator Panel</option>
-                  </select>
-                </div>
-                <button
-                  type="submit"
-                  disabled={regLoading}
-                  className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-sm py-3 rounded-xl transition shadow-md active:scale-95 cursor-pointer"
-                >
-                  {regLoading 
-                    ? (editingEmployee ? 'Menyimpan...' : 'Mendaftarkan...') 
-                    : (editingEmployee ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}
-                </button>
-                {editingEmployee && (
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-xl transition active:scale-95 cursor-pointer"
-                  >
-                    Batal Edit
-                  </button>
-                )}
-              </form>
-            </div>
-
-          </div>
+          <EmployeeManager
+            processedEmployees={processedEmployees}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            visiblePasscodes={visiblePasscodes}
+            togglePasscodeVisibility={togglePasscodeVisibility}
+            currentUser={currentUser}
+            onStartEdit={handleStartEdit}
+            onDeleteEmployee={(emp) => setEmployeeToDelete(emp)}
+            onShowResetModal={() => setShowResetModal(true)}
+            onImportExcel={handleImportExcel}
+            importLoading={importLoading}
+            importProgress={importProgress}
+            importFeedback={importFeedback}
+            onDismissImportFeedback={() => setImportFeedback(null)}
+            editingEmployee={editingEmployee}
+            newNik={newNik}
+            setNewNik={setNewNik}
+            newFullName={newFullName}
+            setNewFullName={setNewFullName}
+            newPasscode={newPasscode}
+            setNewPasscode={setNewPasscode}
+            newRole={newRole}
+            setNewRole={setNewRole}
+            regLoading={regLoading}
+            regFeedback={regFeedback}
+            onSaveEmployee={handleSaveEmployee}
+            onCancelEdit={handleCancelEdit}
+          />
         )}
 
-        {/* TAB 4: REKAP BULANAN */}
         {activeTab === 'recap' && (
-          <div className="p-4 md:p-8 flex-1 flex flex-col animate-fade-in w-full overflow-x-hidden">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 mb-4 md:mb-6">
-              <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 mb-4">
-                <div>
-                  <h3 className="text-sm md:text-lg font-bold text-gray-800">Rekap Bulanan Kehadiran Karyawan</h3>
-                  <p className="text-[10px] md:text-xs text-gray-400 leading-relaxed mt-1">
-                    Arahkan kursor ke tanda centang/silang untuk melihat detail jam kerja.
-                  </p>
-                </div>
-                
-                {/* Baris 1: Selector Bulan, Tahun, Tombol Aksi */}
-                <div className="flex flex-wrap gap-2 items-center">
-                  <select
-                    value={recapMonth}
-                    onChange={(e) => {
-                      const newMonth = Number(e.target.value);
-                      startTransition(() => {
-                        setRecapMonth(newMonth);
-                        // Reset range to full month
-                        const lastDay = new Date(recapYear, newMonth + 1, 0).getDate();
-                        setRecapStartDay(1);
-                        setRecapEndDay(lastDay);
-                      });
-                    }}
-                    className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
-                  >
-                    {[
-                      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-                    ].map((m, idx) => (
-                      <option key={m} value={idx}>{m}</option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={recapYear}
-                    onChange={(e) => {
-                      const newYear = Number(e.target.value);
-                      startTransition(() => {
-                        setRecapYear(newYear);
-                        const lastDay = new Date(newYear, recapMonth + 1, 0).getDate();
-                        setRecapStartDay(1);
-                        setRecapEndDay(lastDay);
-                      });
-                    }}
-                    className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
-                  >
-                    {[2025, 2026, 2027, 2028].map((y) => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-
-                  {/* Rentang Tanggal */}
-                  <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 rounded-xl px-2.5 py-1.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3 h-3 text-orange-500 shrink-0">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                    </svg>
-                    <span className="text-[10px] font-extrabold text-orange-600 uppercase tracking-wide">Tgl</span>
-                    <select
-                      value={recapStartDay}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        setRecapStartDay(v);
-                        if (v > recapEndDay) setRecapEndDay(v);
-                      }}
-                      className="bg-transparent border-none text-xs font-black text-orange-700 focus:outline-none cursor-pointer w-10"
-                    >
-                      {Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1).map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                    <span className="text-[10px] font-extrabold text-orange-500">s/d</span>
-                    <select
-                      value={recapEndDay}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        setRecapEndDay(v);
-                        if (v < recapStartDay) setRecapStartDay(v);
-                      }}
-                      className="bg-transparent border-none text-xs font-black text-orange-700 focus:outline-none cursor-pointer w-10"
-                    >
-                      {Array.from({ length: new Date(recapYear, recapMonth + 1, 0).getDate() }, (_, i) => i + 1).map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                    {/* Reset to full month */}
-                    {(recapStartDay !== 1 || recapEndDay !== new Date(recapYear, recapMonth + 1, 0).getDate()) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRecapStartDay(1);
-                          setRecapEndDay(new Date(recapYear, recapMonth + 1, 0).getDate());
-                        }}
-                        className="ml-0.5 text-orange-400 hover:text-orange-600 transition text-[10px] font-black cursor-pointer"
-                        title="Reset ke bulan penuh"
-                      >✕</button>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={handleExportRecapXLSX}
-                    className="hover-lift bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-3.5 h-3.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                    </svg>
-                    Ekspor (.XLSX)
-                  </button>
-
-                  <button
-                    onClick={() => setShowResetRecapModal(true)}
-                    className="hover-lift bg-red-500 hover:bg-red-600 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md cursor-pointer flex items-center gap-2"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                    </svg>
-                    Reset Bulan Ini
-                  </button>
-                </div>
-              </div>
-
-              {/* FILTER DAN SEARCH BAR REKAP */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-                <div className="sm:col-span-2">
-                  <div className="relative flex items-center">
-                    <span className="absolute left-3.5 text-slate-400">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
-                      </svg>
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="Cari nama atau NIK karyawan..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 pl-10 pr-10 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 transition-all shadow-sm"
-                    />
-                    {searchTerm && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchTerm('')}
-                        className="absolute right-3.5 text-slate-400 hover:text-slate-600 font-extrabold text-xs cursor-pointer focus:outline-none"
-                      >
-                        Batal
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as any)}
-                    className="w-full bg-gray-50 border border-gray-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer shadow-sm"
-                  >
-                    <option value="newest">Urutan: Terbaru</option>
-                    <option value="excel">Urutan: Sesuai Excel</option>
-                    <option value="name">Urutan: Nama (A - Z)</option>
-                    <option value="nik">Urutan: NIK (Terkecil)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* TABEL GRID BULANAN */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 overflow-hidden flex-1 flex flex-col">
-              {(recapLoading || isPending) ? (
-                <div className="py-20 flex flex-col items-center justify-center flex-1">
-                  <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                  <p className="text-sm font-bold text-gray-500">Memuat data rekap...</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto overflow-y-auto max-h-[550px] w-full flex-1 border border-slate-100/80 rounded-2xl shadow-inner bg-slate-50/20">
-                  <table className="min-w-max w-full text-left border-collapse">
-                    <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md shadow-[0_1px_0_rgba(241,245,249,1)]">
-                      <tr className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
-                        <th className="py-4 px-4 sticky left-0 top-0 bg-white z-30 border-r border-gray-100 rounded-l-xl w-[180px]">Nama Karyawan</th>
-                        <th className="py-4 px-2 text-center sticky left-[180px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[90px]">
-                          Hadir<br/>
-                          <span className="text-[9px] font-bold text-orange-400 normal-case">{recapStartDay}–{Math.min(recapEndDay, new Date(recapYear, recapMonth + 1, 0).getDate())}</span>
-                        </th>
-                        <th className="py-4 px-2 text-center sticky left-[270px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[60px]">Total</th>
-                        <th className="py-4 px-2 text-center sticky left-[330px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">Terlambat</th>
-                        <th className="py-4 px-2 text-center sticky left-[395px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">Lembur</th>
-                        {daysInSelectedMonth.map((day) => (
-                          <th key={day} className="py-4 px-2 text-center w-[75px] text-[10px] sticky top-0 bg-slate-50/90 z-20">
-                            {day}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm divide-y divide-gray-50 font-bold text-gray-700">
-                      {processedEmployees.filter(p => p.role === 'user').length === 0 ? (
-                        <tr>
-                          <td colSpan={36} className="py-12 text-center text-gray-400 font-bold">
-                            {searchTerm ? 'Tidak ditemukan karyawan yang cocok.' : 'Belum ada data karyawan terdaftar.'}
-                          </td>
-                        </tr>
-                      ) : (
-                        processedEmployees.filter(p => p.role === 'user').map((emp) => {
-                          const stats = employeeRecapStats.get(emp.id);
-                          if (!stats) return null;
-                          const { countInRange, countTotal, totalLateMinutes, totalOvertimeMinutes } = stats;
-                          return (
-                            <tr key={emp.id} className="hover:bg-gray-50/50">
-                              {/* Kolom Nama Pinned */}
-                              <td className="py-3 px-4 sticky left-0 bg-white z-10 border-r border-gray-100 shadow-[2px_0_5px_rgba(0,0,0,0.02)] w-[180px]">
-                                <p className="font-extrabold text-gray-900 text-xs">{emp.full_name}</p>
-                                <p className="text-[10px] text-gray-400 font-bold">NIK: {emp.nik}</p>
-                              </td>
-
-                              {/* Kolom Ringkasan Kehadiran Pinned — sesuai rentang */}
-                              <td className="py-3 px-2 sticky left-[180px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-emerald-600 text-xs w-[90px]">
-                                {countInRange} Hari
-                              </td>
-                              <td className="py-3 px-2 sticky left-[270px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-orange-600 text-xs w-[60px]">
-                                {countTotal} Hari
-                              </td>
-                              <td className="py-3 px-2 sticky left-[330px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-red-500 text-xs w-[65px]">
-                                {formatLateMinutes(totalLateMinutes)}
-                              </td>
-                              <td className="py-3 px-2 sticky left-[395px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-purple-600 text-xs w-[65px]">
-                                {formatOvertimeMinutes(totalOvertimeMinutes)}
-                              </td>
-                              
-                              {/* Kolom Tanggal - O(1) map lookup */}
-                              {daysInSelectedMonth.map((day) => {
-                                const log = recapLogMap.get(`${emp.id}_${day}`);
-                                const isSunday = sundaySet.has(day);
-
-                                return (
-                                  <td 
-                                    key={day} 
-                                    onClick={() => handleEditCellClick(emp, day, log)}
-                                    className="py-2.5 px-1.5 text-center align-middle w-[75px] cursor-pointer hover:bg-orange-50/50"
-                                    title="Klik untuk tambah/edit absensi"
-                                  >
-                                    {log ? (
-                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl hover:bg-emerald-100 cursor-pointer">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5 mb-0.5">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                        </svg>
-                                        <span className="text-[8px] font-black tracking-tighter">
-                                          {new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')}
-                                        </span>
-                                        <span className="text-[8px] font-black tracking-tighter text-emerald-600 leading-tight">
-                                          {log.check_out
-                                            ? new Date(log.check_out).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')
-                                            : '--:--'}
-                                        </span>
-                                        
-                                        {/* Tooltip on Hover */}
-                                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-48 bg-slate-900 text-white text-left p-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] space-y-1 font-bold">
-                                          <p className="text-orange-400 font-extrabold">Absensi {day} {[
-                                            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-                                            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-                                          ][recapMonth]}</p>
-                                          <p>Masuk: <span className="text-white">{new Date(log.check_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')} WIB</span> ({log.status})</p>
-                                          <p>Pulang: <span className="text-white">{log.check_out ? new Date(log.check_out).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':') + ' WIB' : '--:--'}</span></p>
-                                          {log.break_start ? (
-                                            <p>Istirahat: <span className="text-blue-300">
-                                              {new Date(log.break_start).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')}
-                                              {log.break_end ? ` – ${new Date(log.break_end).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')} WIB` : ' WIB (blm selesai)'}
-                                            </span></p>
-                                          ) : (
-                                            <p>Istirahat: <span className="text-slate-400">Tidak dicatat</span></p>
-                                          )}
-                                          <p className="text-[9px] text-slate-400">GPS: {Number(log.latitude).toFixed(5)}, {Number(log.longitude).toFixed(5)}</p>
-                                          <p className="text-[8px] text-orange-300 mt-1">💡 Klik untuk koreksi absensi</p>
-                                        </div>
-                                      </div>
-                                    ) : isSunday ? (
-                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-200 cursor-pointer">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" className="w-3.5 h-3.5 mb-0.5">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        <span className="text-[8px] font-black tracking-tighter">Libur</span>
-
-                                        {/* Tooltip on Hover */}
-                                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-40 bg-slate-900 text-white text-center py-2 px-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] font-bold">
-                                          <p className="text-slate-300 font-extrabold">Hari Minggu</p>
-                                          <p className="text-slate-400">Libur Akhir Pekan</p>
-                                          <p className="text-[8px] text-orange-300 mt-1">💡 Klik untuk input lembur</p>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="relative group flex flex-col items-center justify-center p-1 bg-red-50 text-red-400 border border-red-100 rounded-xl hover:bg-red-100 cursor-pointer">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-
-                                        {/* Tooltip on Hover */}
-                                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-40 bg-slate-900 text-white text-center py-2 px-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] font-bold">
-                                          <p className="text-red-400 font-extrabold">Tidak Hadir</p>
-                                          <p className="text-slate-200">Tidak ada absensi pada hari ini.</p>
-                                          <p className="text-[8px] text-orange-300 mt-1">💡 Klik untuk input manual</p>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
+          <MonthlyRecapGrid
+            recapMonth={recapMonth}
+            setRecapMonth={setRecapMonth}
+            recapYear={recapYear}
+            setRecapYear={setRecapYear}
+            recapStartDay={recapStartDay}
+            setRecapStartDay={setRecapStartDay}
+            recapEndDay={recapEndDay}
+            setRecapEndDay={setRecapEndDay}
+            onExportRecapXLSX={handleExportRecapXLSX}
+            onOpenResetRecapModal={() => setShowResetRecapModal(true)}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            recapLoading={recapLoading}
+            isPending={isPending}
+            daysInSelectedMonth={daysInSelectedMonth}
+            processedEmployees={processedEmployees}
+            employeeRecapStats={employeeRecapStats}
+            recapLogMap={recapLogMap}
+            sundaySet={sundaySet}
+            formatLateMinutes={formatLateMinutes}
+            formatOvertimeMinutes={formatOvertimeMinutes}
+            onEditCellClick={handleEditCellClick}
+            startTransition={startTransition}
+            showResetRecapModal={showResetRecapModal}
+            setShowResetRecapModal={setShowResetRecapModal}
+            resetRecapLoading={resetRecapLoading}
+            onResetMonthlyRecap={handleResetMonthlyRecap}
+            editingCell={editingCell}
+            setEditingCell={setEditingCell}
+            editCheckIn={editCheckIn}
+            setEditCheckIn={setEditCheckIn}
+            editCheckOut={editCheckOut}
+            setEditCheckOut={setEditCheckOut}
+            editStatus={editStatus}
+            setEditStatus={setEditStatus}
+            isSavingEdit={isSavingEdit}
+            onSaveAttendanceEdit={handleSaveAttendanceEdit}
+            onDeleteAttendanceRecord={handleDeleteAttendanceRecord}
+          />
         )}
 
-        {/* TAB 3: PENGATURAN GEOFENCING */}
         {activeTab === 'geofencing' && (
-          <div className="p-8 max-w-6xl w-full flex-1 animate-fade-in">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              
-              {/* KIRI: FORM CONFIG */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">Pengaturan & Aturan Kantor</h3>
-                  <p className="text-xs text-gray-400 mb-6 leading-relaxed">
-                    Atur titik koordinat lokasi geofencing kantor, radius toleransi jarak, serta jadwal jam kerja absensi karyawan.
-                  </p>
-
-                  {geofenceMessage && (
-                    <div className={`p-4 rounded-xl mb-6 text-sm font-bold border ${
-                      geofenceMessage.includes('berhasil') 
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                        : 'bg-red-50 text-red-600 border-red-100'
-                    }`}>
-                      {geofenceMessage}
-                    </div>
-                  )}
-
-                  <form onSubmit={handleUpdateGeofence} className="space-y-6">
-                    {/* SEKSI 1: LOKASI & RADIUS */}
-                    <div className="border-b border-gray-100 pb-5">
-                      <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-3">1. Lokasi & Radius Geofencing</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Garis Lintang (Latitude)</label>
-                          <input
-                            type="text"
-                            required
-                            value={geofence.factory_lat}
-                            onChange={(e) => setGeofence({ ...geofence, factory_lat: Number(e.target.value) })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Garis Bujur (Longitude)</label>
-                          <input
-                            type="text"
-                            required
-                            value={geofence.factory_lon}
-                            onChange={(e) => setGeofence({ ...geofence, factory_lon: Number(e.target.value) })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Radius Batas Toleransi</label>
-                        <div className="relative flex items-center">
-                          <input
-                            type="number"
-                            required
-                            min={5}
-                            max={10000}
-                            value={geofence.radius_meters}
-                            onChange={(e) => setGeofence({ ...geofence, radius_meters: Number(e.target.value) })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                          <span className="absolute right-4 text-xs font-extrabold text-gray-400">Meter</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* SEKSI 2: JAM KERJA & ATURAN */}
-                    <div className="pb-2">
-                      <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-3">2. Jam Kerja & Aturan Absensi</h4>
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Jam Masuk Kantor</label>
-                          <input
-                            type="time"
-                            required
-                            value={geofence.work_start_time}
-                            onChange={(e) => setGeofence({ ...geofence, work_start_time: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Jam Pulang Kantor</label>
-                          <input
-                            type="time"
-                            required
-                            value={geofence.work_end_time}
-                            onChange={(e) => setGeofence({ ...geofence, work_end_time: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Mulai Istirahat</label>
-                          <input
-                            type="time"
-                            required
-                            value={geofence.break_start_time}
-                            onChange={(e) => setGeofence({ ...geofence, break_start_time: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Selesai Istirahat</label>
-                          <input
-                            type="time"
-                            required
-                            value={geofence.break_end_time}
-                            onChange={(e) => setGeofence({ ...geofence, break_end_time: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                        </div>
-                      </div>
-                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4">
-                        <label className="block text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2.5">
-                          Jadwal Sabtu (Setengah Hari)
-                        </label>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">Masuk Sabtu</label>
-                            <input
-                              type="time"
-                              required
-                              value={geofence.saturday_work_start_time}
-                              onChange={(e) => setGeofence({ ...geofence, saturday_work_start_time: e.target.value })}
-                              className="w-full bg-white border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">Pulang Sabtu</label>
-                            <input
-                              type="time"
-                              required
-                              value={geofence.saturday_work_end_time}
-                              onChange={(e) => setGeofence({ ...geofence, saturday_work_end_time: e.target.value })}
-                              className="w-full bg-white border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Toleransi Keterlambatan</label>
-                        <div className="relative flex items-center">
-                          <input
-                            type="number"
-                            required
-                            min={0}
-                            max={240}
-                            value={geofence.late_tolerance_minutes}
-                            onChange={(e) => setGeofence({ ...geofence, late_tolerance_minutes: Number(e.target.value) })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                          <span className="absolute right-4 text-xs font-extrabold text-gray-400">Menit</span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-extrabold text-gray-500 uppercase mb-1">Ambang Batas Lembur</label>
-                        <div className="relative flex items-center">
-                          <input
-                            type="number"
-                            required
-                            min={0}
-                            max={480}
-                            value={geofence.overtime_threshold_minutes}
-                            onChange={(e) => setGeofence({ ...geofence, overtime_threshold_minutes: Number(e.target.value) })}
-                            className="w-full bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
-                          />
-                          <span className="absolute right-4 text-xs font-extrabold text-gray-400">Menit</span>
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
-                          Karyawan dihitung lembur jika pulang lebih dari <strong className="text-gray-600">{geofence.overtime_threshold_minutes} menit</strong> setelah jam pulang kantor.
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={geofenceLoading}
-                      className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-sm py-3.5 rounded-xl transition shadow-md active:scale-95 cursor-pointer"
-                    >
-                      {geofenceLoading ? 'Menyimpan...' : 'Simpan Pengaturan Kantor'}
-                    </button>
-                  </form>
-                </div>
-              </div>
-
-              {/* KANAN: MAP PREVIEW */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 flex flex-col">
-                <h3 className="text-xl font-bold text-gray-800 mb-2">Pratinjau Peta Lokasi</h3>
-                <p className="text-xs text-gray-400 mb-6 leading-relaxed">
-                  Peta interaktif di bawah menunjukkan posisi pabrik berdasarkan koordinat di samping.
-                </p>
-                
-                <div className="flex-1 w-full min-h-[300px] rounded-2xl border border-gray-200 overflow-hidden relative shadow-inner bg-slate-100">
-                  <iframe
-                    title="Map Preview"
-                    width="100%"
-                    height="100%"
-                    frameBorder="0"
-                    scrolling="no"
-                    marginHeight={0}
-                    marginWidth={0}
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${geofence.factory_lon - 0.003}%2C${geofence.factory_lat - 0.002}%2C${geofence.factory_lon + 0.003}%2C${geofence.factory_lat + 0.002}&layer=mapnik&marker=${geofence.factory_lat}%2C${geofence.factory_lon}`}
-                    className="w-full h-full min-h-[300px]"
-                  ></iframe>
-                </div>
-
-                <div className="mt-4 flex gap-3">
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${geofence.factory_lat},${geofence.factory_lon}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full bg-orange-500 hover:bg-orange-600 text-white text-center font-bold text-xs py-3 rounded-xl transition shadow-md hover-lift cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                    </svg>
-                    Buka di Google Maps
-                  </a>
-                </div>
-              </div>
-
-            </div>
-          </div>
+          <GeofenceSettingsCard
+            geofence={geofence}
+            setGeofence={setGeofence}
+            geofenceLoading={geofenceLoading}
+            geofenceMessage={geofenceMessage}
+            onUpdateGeofence={handleUpdateGeofence}
+          />
         )}
 
-        {/* TAB 5: KELOLA SLIP GAJI */}
         {activeTab === 'payslip' && (
-          <div className="p-4 md:p-8 space-y-6 flex-1 animate-fade-in">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-1">Upload Slip Gaji Karyawan</h3>
-              <p className="text-xs text-gray-400 mb-5 leading-relaxed">
-                Upload file Excel laporan gaji. Sistem akan otomatis mencocokkan NIK karyawan dan menyimpan slip gaji masing-masing.
-              </p>
-
-              {/* Feedback */}
-              {payslipFeedback && (
-                <div className={`p-4 rounded-xl mb-5 text-sm font-bold border ${payslipFeedback.success ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                  {payslipFeedback.message}
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-end gap-4">
-                {/* Pilih Bulan */}
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Periode Bulan</label>
-                  <select
-                    value={payslipMonth}
-                    onChange={(e) => setPayslipMonth(Number(e.target.value))}
-                    className="bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
-                  >
-                    {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'].map((m, i) => (
-                      <option key={i} value={i}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Pilih Tahun */}
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Tahun</label>
-                  <select
-                    value={payslipYear}
-                    onChange={(e) => setPayslipYear(Number(e.target.value))}
-                    className="bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
-                  >
-                    {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-
-                {/* Pilih Label */}
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Periode</label>
-                  <select
-                    value={payslipLabel}
-                    onChange={(e) => setPayslipLabel(e.target.value)}
-                    className="bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
-                  >
-                    <option value="Awal">Awal (1–15)</option>
-                    <option value="Akhir">Akhir (16–31)</option>
-                  </select>
-                </div>
-
-                {/* Upload Button */}
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">File Excel Gaji</label>
-                  <label className={
-                    `hover-lift flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md cursor-pointer ${payslipImportLoading ? 'opacity-60 pointer-events-none' : ''}`
-                  }>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                    </svg>
-                    {payslipImportLoading ? 'Memproses...' : 'Upload Excel (.xlsx)'}
-                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportPayslipExcel} disabled={payslipImportLoading} />
-                  </label>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              {payslipImportProgress && (
-                <div className="mt-5">
-                  <div className="flex justify-between text-xs font-bold text-gray-500 mb-1.5">
-                    <span>Memproses karyawan...</span>
-                    <span>{payslipImportProgress.current} / {payslipImportProgress.total}</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                    <div
-                      className="bg-emerald-500 h-2.5 rounded-full transition-all duration-300"
-                      style={{ width: `${Math.round((payslipImportProgress.current / payslipImportProgress.total) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Daftar Periode yang Sudah Diupload */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800">Riwayat Upload Slip Gaji</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Klik ikon hapus untuk menghapus seluruh slip gaji pada periode tertentu.</p>
-                </div>
-                <button
-                  onClick={loadPayslipList}
-                  className="text-xs font-bold text-orange-500 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-xl transition cursor-pointer"
-                >
-                  Refresh
-                </button>
-              </div>
-
-              {payslipLoading ? (
-                <div className="py-10 flex flex-col items-center justify-center">
-                  <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                  <p className="text-sm font-bold text-gray-400">Memuat data...</p>
-                </div>
-              ) : payslipList.length === 0 ? (
-                <div className="py-12 text-center">
-                  <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-gray-300">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm font-bold text-gray-400">Belum ada slip gaji yang diupload.</p>
-                  <p className="text-xs text-gray-300 mt-1">Upload file Excel gaji di atas untuk mulai.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {payslipList.map((period) => {
-                    const mNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-                    return (
-                      <div key={`${period.period_year}_${period.period_month}`}
-                        className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:bg-gray-100 transition">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                          </div>
-                          <div>
-                            <p className="font-extrabold text-sm text-gray-900">Slip Gaji {mNames[period.period_month - 1]} {period.period_year} <span className="text-orange-500">— {period.period_label}</span></p>
-                            <p className="text-xs text-gray-400 font-bold">{period.count} karyawan · Diupload {new Date(period.uploaded_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => setDeletingPeriod({ month: period.period_month, year: period.period_year, label: period.period_label })}
-                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
-                          title="Hapus semua slip periode ini"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                          </svg>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Confirm Delete Period Modal */}
-            {deletingPeriod && (
-              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-                <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center border border-gray-100">
-                  <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-7 h-7">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-black text-gray-900 mb-2">Hapus Slip Gaji?</h3>
-                  <p className="text-sm text-gray-500 font-semibold mb-6 leading-relaxed">
-                    Seluruh slip gaji periode <strong className="text-gray-800">
-                      {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][deletingPeriod.month - 1]} {deletingPeriod.year}
-                    </strong> <span className="text-orange-600 font-bold">({deletingPeriod.label})</span> akan dihapus permanen. Karyawan tidak dapat melihat slip ini lagi.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setDeletingPeriod(null)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition cursor-pointer text-sm">
-                      Batal
-                    </button>
-                    <button onClick={() => handleDeletePeriodPayslips(deletingPeriod.month, deletingPeriod.year, deletingPeriod.label)} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition cursor-pointer shadow-lg shadow-red-500/20 text-sm">
-                      Ya, Hapus
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <PayslipManager
+            payslipFeedback={payslipFeedback}
+            payslipMonth={payslipMonth}
+            setPayslipMonth={setPayslipMonth}
+            payslipYear={payslipYear}
+            setPayslipYear={setPayslipYear}
+            payslipLabel={payslipLabel}
+            setPayslipLabel={setPayslipLabel}
+            payslipImportLoading={payslipImportLoading}
+            onImportPayslipExcel={handleImportPayslipExcel}
+            payslipImportProgress={payslipImportProgress}
+            payslipLoading={payslipLoading}
+            payslipList={payslipList}
+            onRefreshPayslips={loadPayslipList}
+            deletingPeriod={deletingPeriod}
+            setDeletingPeriod={setDeletingPeriod}
+            onDeletePeriodPayslips={handleDeletePeriodPayslips}
+          />
         )}
 
-        {/* TAB 6: KELOLA NOTIFIKASI */}
         {activeTab === 'notifications' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <h3 className="text-sm font-black text-gray-800 mb-4 uppercase tracking-widest">Buat Notifikasi Baru</h3>
-              
-              {notifFeedback && (
-                <div className={`p-4 rounded-xl mb-4 text-sm font-bold ${notifFeedback.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                  {notifFeedback.message}
-                </div>
-              )}
-
-              <form onSubmit={handleSaveNotification} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Judul</label>
-                    <input type="text" value={newNotifTitle} onChange={e => setNewNotifTitle(e.target.value)} required className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500" placeholder="Misal: Info Libur Lebaran" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Tipe</label>
-                    <select value={newNotifType} onChange={e => setNewNotifType(e.target.value as any)} className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500">
-                      <option value="info">Info (Biru)</option>
-                      <option value="warning">Peringatan (Kuning)</option>
-                      <option value="success">Sukses (Hijau)</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Isi Pesan</label>
-                  <textarea value={newNotifMessage} onChange={e => setNewNotifMessage(e.target.value)} required rows={3} className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500" placeholder="Ketik isi pengumuman..."></textarea>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Target Penerima (Kosongkan jika Broadcast)</label>
-                  <select value={newNotifTarget} onChange={e => setNewNotifTarget(e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500">
-                    <option value="">-- Semua Karyawan (Broadcast) --</option>
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.full_name} ({emp.nik})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex justify-end">
-                  <button type="submit" disabled={!newNotifTitle || !newNotifMessage} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl transition duration-200 shadow-lg shadow-orange-500/30 disabled:opacity-50">
-                    Kirim Notifikasi
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Daftar Notifikasi Aktif</h3>
-                <button onClick={loadNotifications} className="text-orange-500 hover:bg-orange-50 p-2 rounded-lg transition">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className={`w-5 h-5 ${notifLoading ? 'animate-spin' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {notifications.length === 0 ? (
-                  <p className="text-center py-8 text-sm text-gray-400 font-bold">Belum ada notifikasi.</p>
-                ) : (
-                  notifications.map(n => (
-                    <div key={n.id} className="border border-slate-100 p-4 rounded-xl flex items-center justify-between gap-4 hover:shadow-md transition">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${n.type === 'info' ? 'bg-blue-100 text-blue-700' : n.type === 'warning' ? 'bg-yellow-100 text-yellow-700' : 'bg-emerald-100 text-emerald-700'}`}>{n.type}</span>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${n.target_user_id ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'}`}>{n.target_user_id ? `PRIVATE: ${n.profiles?.full_name}` : 'BROADCAST'}</span>
-                          <span className="text-[10px] text-gray-400 font-bold">{new Date(n.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</span>
-                        </div>
-                        <h4 className="text-sm font-bold text-gray-800">{n.title}</h4>
-                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{n.message}</p>
-                      </div>
-                      <button onClick={() => handleDeleteNotification(n.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition" title="Hapus Notifikasi">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <NotificationManager
+            notifFeedback={notifFeedback}
+            newNotifTitle={newNotifTitle}
+            setNewNotifTitle={setNewNotifTitle}
+            newNotifType={newNotifType}
+            setNewNotifType={setNewNotifType}
+            newNotifMessage={newNotifMessage}
+            setNewNotifMessage={setNewNotifMessage}
+            newNotifTarget={newNotifTarget}
+            setNewNotifTarget={setNewNotifTarget}
+            employees={employees}
+            onSaveNotification={handleSaveNotification}
+            notifications={notifications}
+            notifLoading={notifLoading}
+            onRefreshNotifications={loadNotifications}
+            onDeleteNotification={handleDeleteNotification}
+          />
         )}
 
-        {/* TAB 7: KELOLA CUTI & IZIN */}
         {activeTab === 'leave' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Daftar Pengajuan</h3>
-                  <p className="text-xs text-slate-500 font-medium mt-1">Kelola permohonan cuti, sakit, dan izin karyawan.</p>
-                </div>
-                <button onClick={loadLeaveRequests} className="text-orange-500 hover:bg-orange-50 p-2 rounded-lg transition">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className={`w-5 h-5 ${leaveLoading ? 'animate-spin' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {leaveRequests.length === 0 ? (
-                  <div className="text-center py-12">
-                    <p className="text-sm text-gray-400 font-bold">Belum ada pengajuan izin/cuti.</p>
-                  </div>
-                ) : (
-                  leaveRequests.map(req => (
-                    <div key={req.id} className="border border-slate-100 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 hover:shadow-md transition">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">{req.type}</span>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
-                            req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                            req.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                            'bg-amber-100 text-amber-700'
-                          }`}>
-                            {req.status}
-                          </span>
-                          <span className="text-[10px] text-gray-400 font-bold hidden md:inline-block">Diajukan: {new Date(req.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}</span>
-                        </div>
-                        <h4 className="text-sm font-black text-gray-800">{req.profiles?.full_name} <span className="text-xs font-bold text-slate-400 ml-1">({req.profiles?.nik})</span></h4>
-                        <p className="text-xs font-bold text-orange-500 mt-1">
-                          Tgl: {new Date(req.start_date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})} 
-                          {req.start_date !== req.end_date && ` - ${new Date(req.end_date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})}`}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-1.5 font-medium leading-relaxed">"{req.reason}"</p>
-                      </div>
-                      
-                      <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
-                        {req.status === 'Pending' && (
-                          <>
-                            <button 
-                              onClick={() => handleUpdateLeaveStatus(req, 'Rejected')}
-                              disabled={leaveActionLoading}
-                              className="flex-1 md:flex-none px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl transition cursor-pointer"
-                            >
-                              Tolak
-                            </button>
-                            <button 
-                              onClick={() => handleUpdateLeaveStatus(req, 'Approved')}
-                              disabled={leaveActionLoading}
-                              className="flex-1 md:flex-none px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-500/30 transition cursor-pointer"
-                            >
-                              Setujui
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => handleDeleteLeave(req.id)}
-                          disabled={leaveActionLoading}
-                          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-red-500 rounded-xl transition cursor-pointer flex items-center justify-center"
-                          title="Hapus Data"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <LeaveManager
+            leaveRequests={leaveRequests}
+            leaveLoading={leaveLoading}
+            leaveActionLoading={leaveActionLoading}
+            onRefreshLeaveRequests={loadLeaveRequests}
+            onUpdateLeaveStatus={handleUpdateLeaveStatus}
+            onDeleteLeave={handleDeleteLeave}
+          />
         )}
-
       </main>
 
-      {/* CONFIRM LOGOUT MODAL */}
-      {showLogoutModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl animate-scale-up text-center">
-            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-8 h-8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-black text-slate-900 mb-2">Keluar Panel Admin?</h3>
-            <p className="text-sm font-semibold text-slate-500 mb-6 leading-relaxed">Apakah Anda yakin ingin keluar dari panel admin?</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => setShowLogoutModal(false)}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer"
-              >
-                Batal
-              </button>
-              <button 
-                onClick={async () => {
-                  setShowLogoutModal(false);
-                  await handleLogout();
-                }}
-                className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer shadow-lg shadow-red-500/25"
-              >
-                Ya, Keluar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* EXCEL IMPORT PROGRESS MODAL */}
-      {importLoading && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl text-center animate-scale-up">
-            <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <h3 className="text-lg font-black text-slate-900 mb-2">Mengimport Data Karyawan...</h3>
-            <p className="text-sm font-semibold text-slate-500">
-              Memproses {importProgress?.current} dari {importProgress?.total} data.
-            </p>
-            <p className="text-xs text-slate-400 mt-2">Mohon tunggu, jangan menutup halaman ini.</p>
-          </div>
-        </div>
-      )}
-      {/* DELETE EMPLOYEE CONFIRMATION MODAL */}
-      {employeeToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl text-center animate-scale-up">
-            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-8 h-8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-black text-slate-900 mb-2">Hapus Karyawan?</h3>
-            <p className="text-sm font-semibold text-slate-500 mb-6 leading-relaxed">
-              Apakah Anda yakin ingin menghapus karyawan <strong className="text-slate-800">{employeeToDelete.full_name}</strong> (NIK: {employeeToDelete.nik})?
-              Semua data riwayat absensi karyawan ini juga akan dihapus permanen.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                type="button"
-                onClick={() => setEmployeeToDelete(null)}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer"
-              >
-                Batal
-              </button>
-              <button 
-                type="button"
-                onClick={handleDeleteEmployeeConfirm}
-                className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer shadow-lg shadow-red-500/25"
-              >
-                Ya, Hapus
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* CONFIRM RESET EMPLOYEES MODAL */}
-      {showResetModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl text-center animate-scale-up">
-            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-8 h-8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286zm0 13.036h.008v.008H12v-.008z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-black text-slate-900 mb-2">Reset Semua Karyawan?</h3>
-            <p className="text-sm font-semibold text-slate-500 mb-6 leading-relaxed">
-              Tindakan ini akan <strong className="text-red-600">MENGHAPUS SEMUA DATA KARYAWAN</strong> (kecuali akun Admin Anda) serta menghapus seluruh riwayat absensi bulanan mereka secara permanen!
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                type="button"
-                onClick={() => setShowResetModal(false)}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer"
-              >
-                Batal
-              </button>
-              <button 
-                type="button"
-                onClick={handleResetAllEmployees}
-                className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer shadow-lg shadow-red-500/25"
-              >
-                Ya, Reset Semua
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminLogoutModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={async () => {
+          setShowLogoutModal(false);
+          await handleLogout();
+        }}
+      />
 
-      {/* CONFIRM RESET MONTHLY RECAP MODAL */}
-      {showResetRecapModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl text-center animate-scale-up">
-            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-8 h-8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-black text-slate-900 mb-1">Reset Data Absensi?</h3>
-            <p className="text-xs font-bold text-orange-500 mb-3">
-              {['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][recapMonth]} {recapYear}
-            </p>
-            <p className="text-sm font-semibold text-slate-500 mb-6 leading-relaxed">
-              Tindakan ini akan <strong className="text-red-600">MENGHAPUS SEMUA DATA ABSENSI</strong> pada bulan tersebut secara permanen. Pastikan Anda sudah <strong className="text-slate-700">backup ke Excel</strong> sebelum melanjutkan.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setShowResetRecapModal(false)}
-                disabled={resetRecapLoading}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer disabled:opacity-50"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleResetMonthlyRecap}
-                disabled={resetRecapLoading}
-                className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer shadow-lg shadow-red-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {resetRecapLoading ? (
-                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Menghapus...</>
-                ) : (
-                  'Ya, Hapus Data'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteEmployeeModal
+        employee={employeeToDelete}
+        onClose={() => setEmployeeToDelete(null)}
+        onConfirm={handleDeleteEmployeeConfirm}
+      />
 
-      {/* MANUAL ATTENDANCE CORRECTION MODAL */}
-      {editingCell && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl animate-scale-up">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-lg font-black text-slate-950">Koreksi Absensi Manual</h3>
-                <p className="text-xs text-slate-400 font-bold mt-1">
-                  Karyawan: <span className="text-slate-800">{editingCell.employee.full_name}</span> (NIK: {editingCell.employee.nik})
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingCell(null)}
-                className="text-slate-400 hover:text-slate-600 focus:outline-none p-2 rounded-xl hover:bg-slate-50 cursor-pointer"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Info Tanggal */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-bold">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal Koreksi</p>
-                  <p className="text-sm font-extrabold text-slate-800">
-                    {editingCell.day} {[
-                      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-                    ][recapMonth]} {recapYear}
-                  </p>
-                </div>
-              </div>
-
-              {/* Form Input Jam Masuk & Pulang */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Jam Masuk (WIB)</label>
-                  <input
-                    type="time"
-                    value={editCheckIn}
-                    onChange={(e) => setEditCheckIn(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 shadow-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Jam Pulang (WIB)</label>
-                  <input
-                    type="time"
-                    value={editCheckOut}
-                    onChange={(e) => setEditCheckOut(e.target.value)}
-                    placeholder="--:--"
-                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 shadow-sm"
-                  />
-                  <p className="text-[9px] text-slate-400 font-bold mt-1">Kosongkan jika belum absen pulang</p>
-                </div>
-              </div>
-
-              {/* Status Absensi */}
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Status Kehadiran</label>
-                <select
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer shadow-sm"
-                >
-                  <option value="Tepat Waktu">Tepat Waktu (Hadir)</option>
-                  <option value="Terlambat">Terlambat (Hadir)</option>
-                  <option value="Sudah Pulang">Sudah Pulang (Hadir Lengkap)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-8 grid grid-cols-3 gap-3">
-              {/* Button Hapus (hanya jika log sudah ada sebelumnya) */}
-              {editingCell.log ? (
-                <button
-                  type="button"
-                  disabled={isSavingEdit}
-                  onClick={handleDeleteAttendanceRecord}
-                  className="bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer text-xs disabled:opacity-50 border border-red-100 flex items-center justify-center gap-1"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                  </svg>
-                  Hapus
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setEditingCell(null)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer text-xs"
-                >
-                  Batal
-                </button>
-              )}
-
-              {/* Button Batal / Tutup (Jika ada tombol Hapus, maka tombol ini adalah Batal, jika tidak, tombol ini disatukan) */}
-              {editingCell.log && (
-                <button
-                  type="button"
-                  onClick={() => setEditingCell(null)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer text-xs"
-                >
-                  Batal
-                </button>
-              )}
-
-              <button
-                type="button"
-                disabled={isSavingEdit}
-                onClick={handleSaveAttendanceEdit}
-                className={`text-white font-bold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer text-xs flex items-center justify-center gap-1.5 shadow-lg ${
-                  editingCell.log ? 'col-span-1 bg-orange-500 hover:bg-orange-600 shadow-orange-500/20' : 'col-span-2 bg-orange-500 hover:bg-orange-600 shadow-orange-500/20'
-                }`}
-              >
-                {isSavingEdit ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                    Simpan
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ResetEmployeesModal
+        isOpen={showResetModal}
+        onClose={() => setShowResetModal(false)}
+        onConfirm={handleResetAllEmployees}
+      />
     </div>
   );
 }

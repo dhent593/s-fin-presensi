@@ -1,9 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
+
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
 
 export default function PwaInstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
@@ -12,11 +22,11 @@ export default function PwaInstallPrompt() {
       return;
     }
 
-    const handler = (e: any) => {
+    const handler = (e: Event) => {
       // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
       // Stash the event so it can be triggered later.
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
       // Update UI notify the user they can install the PWA
       setShowPrompt(true);
     };
@@ -38,7 +48,7 @@ export default function PwaInstallPrompt() {
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
     // Show the install prompt
-    deferredPrompt.prompt();
+    await deferredPrompt.prompt();
     // Wait for the user to respond to the prompt
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
@@ -57,7 +67,7 @@ export default function PwaInstallPrompt() {
     <div className="fixed bottom-0 left-0 right-0 p-4 z-50 animate-slide-up">
       <div className="max-w-md mx-auto bg-white rounded-2xl shadow-2xl p-4 flex items-center gap-4 border border-slate-100">
         <div className="w-12 h-12 shrink-0 bg-orange-100 rounded-xl flex items-center justify-center p-2">
-          <img src="/favicon.png" alt="S-Fin Logo" className="w-full h-full object-contain" />
+          <Image src="/favicon.png" alt="S-Fin Logo" width={48} height={48} className="w-full h-full object-contain" />
         </div>
         <div className="flex-1">
           <h4 className="text-sm font-black text-slate-800">Install Aplikasi</h4>
@@ -71,7 +81,7 @@ export default function PwaInstallPrompt() {
         </button>
         <button 
           onClick={() => setShowPrompt(false)}
-          className="p-2 text-slate-400 hover:text-slate-600 transition"
+          className="p-2 text-slate-400 hover:text-slate-600 transition cursor-pointer"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-5 h-5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
