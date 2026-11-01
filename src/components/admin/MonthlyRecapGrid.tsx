@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Profile, AttendanceLog } from '@/types';
-import { formatWibTime } from '@/lib/date';
+import { formatWibTime, getWibDate } from '@/lib/date';
 
 interface MonthlyRecapGridProps {
   recapMonth: number;
@@ -93,6 +93,30 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
   onSaveAttendanceEdit,
   onDeleteAttendanceRecord,
 }) => {
+  const [filterMissingCheckOut, setFilterMissingCheckOut] = useState(false);
+
+  const todayWib = useMemo(() => getWibDate(), []);
+  const currentYear = todayWib.getFullYear();
+  const currentMonth = todayWib.getMonth();
+  const currentDay = todayWib.getDate();
+
+  // Set NIK/ID karyawan yang memiliki minimal 1 presensi tanpa absen pulang di bulan terpilih
+  const missingCheckOutEmployeeIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const log of recapLogMap.values()) {
+      if (!['Izin', 'Sakit', 'Cuti'].includes(log.status) && !log.check_out) {
+        ids.add(log.user_id);
+      }
+    }
+    return ids;
+  }, [recapLogMap]);
+
+  // Daftar karyawan yang difilter jika mode "Belum Pulang" aktif
+  const displayedEmployees = useMemo(() => {
+    if (!filterMissingCheckOut) return processedEmployees;
+    return processedEmployees.filter((emp) => missingCheckOutEmployeeIds.has(emp.id));
+  }, [processedEmployees, filterMissingCheckOut, missingCheckOutEmployeeIds]);
+
   const monthNames = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
@@ -102,13 +126,45 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
     <div className="p-4 md:p-8 flex-1 flex flex-col animate-fade-in w-full overflow-x-hidden">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 mb-4 md:mb-6">
         <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 mb-4">
-          <div>
-            <h3 className="text-sm md:text-lg font-bold text-gray-800">
-              Rekap Bulanan Kehadiran Karyawan
-            </h3>
-            <p className="text-[10px] md:text-xs text-gray-400 leading-relaxed mt-1">
-              Arahkan kursor ke tanda centang/silang untuk melihat detail jam kerja. Klik kotak untuk koreksi manual.
-            </p>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm md:text-lg font-bold text-gray-800">
+                Rekap Bulanan Kehadiran Karyawan
+              </h3>
+              <p className="text-[10px] md:text-xs text-gray-400 leading-relaxed mt-0.5">
+                Arahkan kursor ke tanda centang/silang untuk melihat detail jam kerja. Klik kotak untuk koreksi manual.
+              </p>
+            </div>
+
+            {/* Mini Legenda Keterangan Tanda */}
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-600">
+              <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-100">
+                <span className="font-black">✓</span> Hadir Lengkap
+              </span>
+              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-lg border border-amber-100">
+                <span className="font-black">T</span> Terlambat
+              </span>
+              <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-200">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                </span>
+                Lupa Pulang
+              </span>
+              <span className="inline-flex items-center gap-1.5 bg-sky-50 text-sky-800 px-2 py-0.5 rounded-lg border border-sky-200">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
+                </span>
+                Sedang Bekerja
+              </span>
+              <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-2 py-0.5 rounded-lg border border-purple-100">
+                <span className="font-black">I/S/C</span> Izin/Sakit/Cuti
+              </span>
+              <span className="inline-flex items-center gap-1 bg-red-50 text-red-400 px-2 py-0.5 rounded-lg border border-red-100">
+                <span className="font-black">✕</span> Libur/Alpa
+              </span>
+            </div>
           </div>
 
           {/* Baris 1: Selector Bulan, Tahun, Rentang, Tombol Aksi */}
@@ -290,8 +346,8 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
         </div>
 
         {/* Filter dan Search Bar Rekap */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-          <div className="sm:col-span-2">
+        <div className="flex flex-col sm:flex-row gap-3 pt-1 items-stretch sm:items-center">
+          <div className="flex-1">
             <div className="relative flex items-center">
               <span className="absolute left-3.5 text-slate-400">
                 <svg
@@ -327,7 +383,44 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
               )}
             </div>
           </div>
-          <div>
+
+          {/* Tombol Filter Cepat Belum Pulang */}
+          <button
+            type="button"
+            onClick={() => setFilterMissingCheckOut(!filterMissingCheckOut)}
+            disabled={missingCheckOutEmployeeIds.size === 0}
+            className={`hover-lift px-3.5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center justify-center gap-2 border shrink-0 ${
+              filterMissingCheckOut
+                ? 'bg-amber-500 text-white border-amber-600 shadow-amber-500/20'
+                : missingCheckOutEmployeeIds.size > 0
+                ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                : 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed opacity-60'
+            }`}
+            title={
+              missingCheckOutEmployeeIds.size > 0
+                ? 'Saring hanya karyawan yang belum absen pulang'
+                : 'Tidak ada karyawan yang belum absen pulang'
+            }
+          >
+            <span className="relative flex h-2 w-2">
+              <span
+                className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  filterMissingCheckOut ? 'bg-white' : 'bg-amber-400'
+                }`}
+              />
+              <span
+                className={`relative inline-flex rounded-full h-2 w-2 ${
+                  filterMissingCheckOut ? 'bg-white' : 'bg-amber-500'
+                }`}
+              />
+            </span>
+            <span>Belum Pulang ({missingCheckOutEmployeeIds.size})</span>
+            {filterMissingCheckOut && (
+              <span className="text-[10px] bg-white/25 rounded-full px-1.5 py-0.5">✕</span>
+            )}
+          </button>
+
+          <div className="w-full sm:w-48 shrink-0">
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as 'newest' | 'excel' | 'name' | 'nik')}
@@ -387,16 +480,18 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-gray-50 font-bold text-gray-700">
-                {processedEmployees.filter((p) => p.role === 'user').length === 0 ? (
+                {displayedEmployees.filter((p) => p.role === 'user').length === 0 ? (
                   <tr>
                     <td colSpan={36} className="py-12 text-center text-gray-400 font-bold">
-                      {searchTerm
+                      {filterMissingCheckOut
+                        ? 'Tidak ada karyawan yang belum absen pulang pada filter ini.'
+                        : searchTerm
                         ? 'Tidak ditemukan karyawan yang cocok.'
                         : 'Belum ada data karyawan terdaftar.'}
                     </td>
                   </tr>
                 ) : (
-                  processedEmployees
+                  displayedEmployees
                     .filter((p) => p.role === 'user')
                     .map((emp) => {
                       const stats = employeeRecapStats.get(emp.id);
@@ -445,26 +540,41 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                                   (() => {
                                     const isLeave = ['Izin', 'Sakit', 'Cuti'].includes(log.status);
                                     const isLate = log.status === 'Terlambat';
+                                    const isMissingCheckOut = !isLeave && !log.check_out;
+                                    const isTodayLog =
+                                      recapYear === currentYear &&
+                                      recapMonth === currentMonth &&
+                                      day === currentDay;
 
                                     const tooltip = (
-                                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-48 bg-slate-900 text-white text-left p-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] space-y-1 font-bold">
+                                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-52 bg-slate-900 text-white text-left p-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-30 text-[10px] space-y-1 font-bold">
                                         <p className="text-orange-400 font-extrabold">
-                                          Absensi {day} {monthNames[recapMonth]}
+                                          Absensi {day} {monthNames[recapMonth]} {recapYear}
                                         </p>
                                         <p>
                                           Masuk:{' '}
-                                          <span className="text-white">
+                                          <span className="text-white font-extrabold">
                                             {formatWibTime(log.check_in)} WIB
                                           </span>{' '}
                                           ({log.status})
                                         </p>
                                         <p>
                                           Pulang:{' '}
-                                          <span className="text-white">
-                                            {log.check_out
-                                              ? `${formatWibTime(log.check_out)} WIB`
-                                              : '--:--'}
-                                          </span>
+                                          {log.check_out ? (
+                                            <span className="text-white font-extrabold">
+                                              {formatWibTime(log.check_out)} WIB
+                                            </span>
+                                          ) : isTodayLog ? (
+                                            <span className="text-sky-300 font-extrabold inline-flex items-center gap-1">
+                                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                                              Sedang Bekerja (Belum Pulang)
+                                            </span>
+                                          ) : (
+                                            <span className="text-amber-400 font-black inline-flex items-center gap-1">
+                                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                              Lupa Absen Pulang ⚠️
+                                            </span>
+                                          )}
                                         </p>
                                         {log.break_start ? (
                                           <p>
@@ -487,14 +597,50 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                                             {log.status[0]}
                                           </span>
                                         ) : isLate ? (
-                                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-700 text-[10px] font-black">
+                                          <span
+                                            className={`inline-flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-700 text-[10px] font-black ${
+                                              isMissingCheckOut
+                                                ? isTodayLog
+                                                  ? 'ring-1.5 ring-sky-400'
+                                                  : 'ring-1.5 ring-amber-400'
+                                                : ''
+                                            }`}
+                                          >
                                             T
                                           </span>
                                         ) : (
-                                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-black">
+                                          <span
+                                            className={`inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-black ${
+                                              isMissingCheckOut
+                                                ? isTodayLog
+                                                  ? 'ring-1.5 ring-sky-400'
+                                                  : 'ring-1.5 ring-amber-400'
+                                                : ''
+                                            }`}
+                                          >
                                             ✓
                                           </span>
                                         )}
+
+                                        {/* Indikator Belum Absen Pulang */}
+                                        {isMissingCheckOut && (
+                                          <span
+                                            className="absolute -top-1 -right-1 flex h-2.5 w-2.5 pointer-events-none"
+                                            title={isTodayLog ? 'Sedang Bekerja (Belum Pulang)' : 'Lupa Absen Pulang'}
+                                          >
+                                            <span
+                                              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                                                isTodayLog ? 'bg-sky-400' : 'bg-amber-400'
+                                              }`}
+                                            />
+                                            <span
+                                              className={`relative inline-flex rounded-full h-2.5 w-2.5 border-2 border-white shadow-xs ${
+                                                isTodayLog ? 'bg-sky-500' : 'bg-amber-500'
+                                              }`}
+                                            />
+                                          </span>
+                                        )}
+
                                         {tooltip}
                                       </div>
                                     );
@@ -639,6 +785,18 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                   </p>
                 </div>
               </div>
+
+              {/* Alert jika belum absen pulang */}
+              {editingCell.log &&
+                !editingCell.log.check_out &&
+                !['Izin', 'Sakit', 'Cuti'].includes(editingCell.log.status) && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 px-3.5 py-2.5 rounded-2xl flex items-start gap-2.5 text-xs font-bold animate-fade-in">
+                    <span className="text-base shrink-0 leading-none mt-0.5">⚠️</span>
+                    <p className="leading-relaxed">
+                      Karyawan belum memiliki jam pulang pada tanggal ini. Silakan isi <strong>Jam Pulang</strong> di bawah untuk melengkapi data absensi.
+                    </p>
+                  </div>
+                )}
 
               {/* Form Input Jam Masuk & Pulang */}
               <div className="grid grid-cols-2 gap-4">

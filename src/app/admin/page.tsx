@@ -1261,8 +1261,13 @@ export default function AdminPage() {
           const dailyStatus = exportDays.map(day => {
             const log = recapLogMap.get(`${emp.id}_${day}`);
             if (log) {
+              const isLeave = ['Izin', 'Sakit', 'Cuti'].includes(log.status);
               const timeInStr = formatWibTime(log.check_in);
-              const timeOutStr = log.check_out ? formatWibTime(log.check_out) : '--:--';
+              const timeOutStr = log.check_out
+                ? formatWibTime(log.check_out)
+                : isLeave
+                ? '--:--'
+                : 'Belum Pulang';
               return `${log.status} (${timeInStr} → ${timeOutStr})`;
             }
             return sundaySet.has(day) ? 'Libur' : '—';
