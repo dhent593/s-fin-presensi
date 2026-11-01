@@ -123,95 +123,49 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
   ];
 
   return (
-    <div className="p-4 md:p-8 flex-1 flex flex-col animate-fade-in w-full overflow-x-hidden">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 mb-4 md:mb-6">
-        <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 mb-4">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm md:text-lg font-bold text-gray-800">
-                Rekap Bulanan Kehadiran Karyawan
+    <div className="p-2 sm:p-3 md:p-5 flex-1 flex flex-col animate-fade-in w-full min-h-0 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* TOOLBAR TERPADU KOMPAK */}
+        <div className="p-2 sm:px-3.5 sm:py-2.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-white shrink-0">
+          {/* SISI KIRI: Periode, Rentang Tanggal & Pencarian */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* Judul Kompak */}
+            <div className="hidden xl:flex items-center gap-1.5 mr-1">
+              <span className="w-2 h-2 rounded-full bg-orange-500" />
+              <h3 className="text-xs font-black text-slate-800 tracking-tight whitespace-nowrap">
+                Rekap Bulanan
               </h3>
-              <p className="text-[10px] md:text-xs text-gray-400 leading-relaxed mt-0.5">
-                Arahkan kursor ke tanda centang/silang untuk melihat detail jam kerja. Klik kotak untuk koreksi manual.
-              </p>
             </div>
 
-            {/* Mini Legenda Keterangan Tanda */}
-            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-600">
-              <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-100">
-                <span className="font-black">✓</span> Hadir Lengkap
-              </span>
-              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-lg border border-amber-100">
-                <span className="font-black">T</span> Terlambat
-              </span>
-              <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-200">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                </span>
-                Lupa Pulang
-              </span>
-              <span className="inline-flex items-center gap-1.5 bg-sky-50 text-sky-800 px-2 py-0.5 rounded-lg border border-sky-200">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
-                </span>
-                Sedang Bekerja
-              </span>
-              <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-2 py-0.5 rounded-lg border border-purple-100">
-                <span className="font-black">I/S/C</span> Izin/Sakit/Cuti
-              </span>
-              <span className="inline-flex items-center gap-1 bg-red-50 text-red-400 px-2 py-0.5 rounded-lg border border-red-100">
-                <span className="font-black">✕</span> Libur/Alpa
-              </span>
-            </div>
-          </div>
-
-          {/* Baris 1: Selector Bulan, Tahun, Rentang, Tombol Aksi */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <select
-              value={recapMonth}
-              onChange={(e) => onMonthChange(Number(e.target.value))}
-              className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
-            >
-              {monthNames.map((m, idx) => (
-                <option key={m} value={idx}>
-                  {m}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={recapYear}
-              onChange={(e) => onYearChange(Number(e.target.value))}
-              className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
-            >
-              {[2025, 2026, 2027, 2028].map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-
-            {/* Rentang Tanggal */}
-            <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 rounded-xl px-2.5 py-1.5">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth="2.5"
-                stroke="currentColor"
-                className="w-3 h-3 text-orange-500 shrink-0"
+            {/* Dropdown Bulan & Tahun */}
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1">
+              <select
+                value={recapMonth}
+                onChange={(e) => onMonthChange(Number(e.target.value))}
+                className="bg-transparent border-none text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
-                />
-              </svg>
-              <span className="text-[10px] font-extrabold text-orange-600 uppercase tracking-wide">
-                Tgl
-              </span>
+                {monthNames.map((m, idx) => (
+                  <option key={m} value={idx}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={recapYear}
+                onChange={(e) => onYearChange(Number(e.target.value))}
+                className="bg-transparent border-none text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
+              >
+                {[2025, 2026, 2027, 2028].map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Rentang Tanggal Kompak */}
+            <div className="flex items-center gap-1 bg-orange-50/70 border border-orange-200/80 rounded-xl px-2 py-1">
+              <span className="text-[10px] font-black text-orange-600 uppercase">Tgl</span>
               <select
                 value={recapStartDay}
                 onChange={(e) => {
@@ -219,7 +173,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                   setRecapStartDay(v);
                   if (v > recapEndDay) setRecapEndDay(v);
                 }}
-                className="bg-transparent border-none text-xs font-black text-orange-700 focus:outline-none cursor-pointer w-10"
+                className="bg-transparent border-none text-xs font-black text-orange-700 focus:outline-none cursor-pointer w-7 text-center"
               >
                 {Array.from(
                   { length: new Date(recapYear, recapMonth + 1, 0).getDate() },
@@ -230,7 +184,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                   </option>
                 ))}
               </select>
-              <span className="text-[10px] font-extrabold text-orange-500">s/d</span>
+              <span className="text-[10px] font-black text-orange-400">-</span>
               <select
                 value={recapEndDay}
                 onChange={(e) => {
@@ -238,7 +192,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                   setRecapEndDay(v);
                   if (v < recapStartDay) setRecapStartDay(v);
                 }}
-                className="bg-transparent border-none text-xs font-black text-orange-700 focus:outline-none cursor-pointer w-10"
+                className="bg-transparent border-none text-xs font-black text-orange-700 focus:outline-none cursor-pointer w-7 text-center"
               >
                 {Array.from(
                   { length: new Date(recapYear, recapMonth + 1, 0).getDate() },
@@ -257,7 +211,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                     setRecapStartDay(1);
                     setRecapEndDay(new Date(recapYear, recapMonth + 1, 0).getDate());
                   }}
-                  className="ml-0.5 text-orange-400 hover:text-orange-600 transition text-[10px] font-black cursor-pointer"
+                  className="text-orange-400 hover:text-orange-600 transition text-[10px] font-black ml-0.5 cursor-pointer"
                   title="Reset ke bulan penuh"
                 >
                   ✕
@@ -265,12 +219,100 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
               )}
             </div>
 
+            {/* Kolom Pencarian Kompak */}
+            <div className="relative flex items-center w-36 sm:w-44 lg:w-52">
+              <span className="absolute left-2.5 text-slate-400">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2.5"
+                  stroke="currentColor"
+                  className="w-3.5 h-3.5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z"
+                  />
+                </svg>
+              </span>
+              <input
+                type="text"
+                placeholder="Cari nama / NIK..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 pl-8 pr-7 py-1 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 transition-all placeholder:font-normal"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 text-slate-400 hover:text-slate-600 font-extrabold text-xs cursor-pointer focus:outline-none"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* SISI KANAN: Filter Cepat Belum Pulang, Urutkan, Tombol Aksi */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Tombol Filter Cepat Belum Pulang */}
+            <button
+              type="button"
+              onClick={() => setFilterMissingCheckOut(!filterMissingCheckOut)}
+              disabled={missingCheckOutEmployeeIds.size === 0}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                filterMissingCheckOut
+                  ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                  : missingCheckOutEmployeeIds.size > 0
+                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                  : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed opacity-60'
+              }`}
+              title={
+                missingCheckOutEmployeeIds.size > 0
+                  ? 'Saring hanya karyawan yang belum absen pulang'
+                  : 'Tidak ada karyawan yang belum absen pulang'
+              }
+            >
+              <span className="relative flex h-2 w-2">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    filterMissingCheckOut ? 'bg-white' : 'bg-amber-400'
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    filterMissingCheckOut ? 'bg-white' : 'bg-amber-500'
+                  }`}
+                />
+              </span>
+              <span>Belum Pulang ({missingCheckOutEmployeeIds.size})</span>
+              {filterMissingCheckOut && (
+                <span className="text-[10px] bg-white/25 rounded-full px-1">✕</span>
+              )}
+            </button>
+
+            {/* Dropdown Urutkan Kompak */}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'newest' | 'excel' | 'name' | 'nik')}
+              className="bg-slate-50 border border-slate-200 px-2 py-1 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
+            >
+              <option value="newest">Terbaru</option>
+              <option value="excel">Sesuai Excel</option>
+              <option value="name">Nama (A-Z)</option>
+              <option value="nik">NIK</option>
+            </select>
+
+            {/* Segarkan */}
             {onRefreshRecap && (
               <button
                 type="button"
                 onClick={onRefreshRecap}
                 disabled={recapLoading}
-                className="hover-lift bg-slate-100 hover:bg-slate-200 disabled:opacity-60 text-slate-700 font-bold text-xs py-2 px-3 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"
+                className="hover-lift bg-slate-50 hover:bg-slate-100 disabled:opacity-60 text-slate-700 font-bold text-xs py-1 px-2.5 rounded-xl transition cursor-pointer flex items-center gap-1 border border-slate-200"
                 title="Segarkan data rekap bulan ini"
               >
                 <svg
@@ -279,7 +321,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                   viewBox="0 0 24 24"
                   strokeWidth="2.5"
                   stroke="currentColor"
-                  className={`w-3.5 h-3.5 ${recapLoading ? 'animate-spin text-orange-500' : 'text-slate-500'}`}
+                  className={`w-3.5 h-3.5 ${recapLoading ? 'animate-spin text-orange-500' : 'text-slate-600'}`}
                 >
                   <path
                     strokeLinecap="round"
@@ -287,19 +329,21 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                     d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
                   />
                 </svg>
-                <span>{recapLoading ? 'Memuat...' : 'Segarkan'}</span>
+                <span className="hidden sm:inline">{recapLoading ? 'Memuat...' : 'Segarkan'}</span>
               </button>
             )}
 
+            {/* Ekspor XLSX */}
             <button
               onClick={onExportRecapXLSX}
               disabled={exportRecapLoading}
-              className="hover-lift bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait text-white font-bold text-xs py-2 px-3 rounded-xl transition shadow-md cursor-pointer flex items-center gap-1.5"
+              className="hover-lift bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-xs py-1 px-2.5 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              title="Unduh rekap ke file Excel"
             >
               {exportRecapLoading ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Mengekspor...</span>
+                  <span className="hidden sm:inline">Mengekspor...</span>
                 </>
               ) : (
                 <>
@@ -317,14 +361,16 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                       d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
                     />
                   </svg>
-                  <span>Ekspor (.XLSX)</span>
+                  <span>Ekspor</span>
                 </>
               )}
             </button>
 
+            {/* Reset Bulan Ini */}
             <button
               onClick={onOpenResetRecapModal}
-              className="hover-lift bg-red-500 hover:bg-red-600 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md cursor-pointer flex items-center gap-2"
+              className="hover-lift bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs py-1 px-2 rounded-xl transition cursor-pointer flex items-center gap-1"
+              title="Hapus / Reset semua presensi bulan ini"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -332,7 +378,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                 viewBox="0 0 24 24"
                 strokeWidth="2.5"
                 stroke="currentColor"
-                className="w-4 h-4"
+                className="w-3.5 h-3.5"
               >
                 <path
                   strokeLinecap="round"
@@ -340,119 +386,28 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                   d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
                 />
               </svg>
-              Reset Bulan Ini
+              <span className="hidden md:inline">Reset</span>
             </button>
           </div>
         </div>
 
-        {/* Filter dan Search Bar Rekap */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-1 items-stretch sm:items-center">
-          <div className="flex-1">
-            <div className="relative flex items-center">
-              <span className="absolute left-3.5 text-slate-400">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth="2.5"
-                  stroke="currentColor"
-                  className="w-4 h-4"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z"
-                  />
-                </svg>
-              </span>
-              <input
-                type="text"
-                placeholder="Cari nama atau NIK karyawan..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 pl-10 pr-10 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 transition-all shadow-sm"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-3.5 text-slate-400 hover:text-slate-600 font-extrabold text-xs cursor-pointer focus:outline-none"
-                >
-                  Batal
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Tombol Filter Cepat Belum Pulang */}
-          <button
-            type="button"
-            onClick={() => setFilterMissingCheckOut(!filterMissingCheckOut)}
-            disabled={missingCheckOutEmployeeIds.size === 0}
-            className={`hover-lift px-3.5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center justify-center gap-2 border shrink-0 ${
-              filterMissingCheckOut
-                ? 'bg-amber-500 text-white border-amber-600 shadow-amber-500/20'
-                : missingCheckOutEmployeeIds.size > 0
-                ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
-                : 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed opacity-60'
-            }`}
-            title={
-              missingCheckOutEmployeeIds.size > 0
-                ? 'Saring hanya karyawan yang belum absen pulang'
-                : 'Tidak ada karyawan yang belum absen pulang'
-            }
-          >
-            <span className="relative flex h-2 w-2">
-              <span
-                className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                  filterMissingCheckOut ? 'bg-white' : 'bg-amber-400'
-                }`}
-              />
-              <span
-                className={`relative inline-flex rounded-full h-2 w-2 ${
-                  filterMissingCheckOut ? 'bg-white' : 'bg-amber-500'
-                }`}
-              />
-            </span>
-            <span>Belum Pulang ({missingCheckOutEmployeeIds.size})</span>
-            {filterMissingCheckOut && (
-              <span className="text-[10px] bg-white/25 rounded-full px-1.5 py-0.5">✕</span>
-            )}
-          </button>
-
-          <div className="w-full sm:w-48 shrink-0">
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'newest' | 'excel' | 'name' | 'nik')}
-              className="w-full bg-gray-50 border border-gray-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer shadow-sm"
-            >
-              <option value="newest">Urutan: Terbaru</option>
-              <option value="excel">Urutan: Sesuai Excel</option>
-              <option value="name">Urutan: Nama (A - Z)</option>
-              <option value="nik">Urutan: NIK (Terkecil)</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* TABEL GRID BULANAN */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 overflow-hidden flex-1 flex flex-col">
+        {/* TABEL GRID BULANAN (FULL VIEWPORT FLEX-1) */}
         {recapLoading || isPending ? (
           <div className="py-20 flex flex-col items-center justify-center flex-1">
-            <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-sm font-bold text-gray-500">Memuat data rekap...</p>
+            <div className="w-10 h-10 border-3 border-orange-500 border-t-transparent rounded-full animate-spin mb-3" />
+            <p className="text-xs font-bold text-gray-500">Memuat data rekap...</p>
           </div>
         ) : (
-          <div className="overflow-x-auto overflow-y-auto max-h-[550px] w-full flex-1 border border-slate-100/80 rounded-2xl shadow-inner bg-slate-50/20">
+          <div className="overflow-x-auto overflow-y-auto w-full flex-1 min-h-0 bg-slate-50/10">
             <table className="min-w-max w-full text-left border-collapse">
-              <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md shadow-[0_1px_0_rgba(241,245,249,1)]">
-                <tr className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
-                  <th className="py-4 px-4 sticky left-0 top-0 bg-white z-30 border-r border-gray-100 rounded-l-xl w-[180px]">
+              <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md shadow-[0_1px_0_rgba(226,232,240,1)]">
+                <tr className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-200/80">
+                  <th className="py-2.5 px-3 sticky left-0 top-0 bg-white z-30 border-r border-slate-100 w-[150px] min-w-[150px] max-w-[150px]">
                     Nama Karyawan
                   </th>
-                  <th className="py-4 px-2 text-center sticky left-[180px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[90px]">
+                  <th className="py-2.5 px-1 text-center sticky left-[150px] top-0 bg-slate-50 border-r border-slate-100 z-30 w-[64px] min-w-[64px]">
                     Hadir<br />
-                    <span className="text-[9px] font-bold text-orange-400 normal-case">
+                    <span className="text-[9px] font-bold text-orange-500 normal-case">
                       {recapStartDay}–
                       {Math.min(
                         recapEndDay,
@@ -460,26 +415,31 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                       )}
                     </span>
                   </th>
-                  <th className="py-4 px-2 text-center sticky left-[270px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[60px]">
+                  <th className="py-2.5 px-1 text-center sticky left-[214px] top-0 bg-slate-50 border-r border-slate-100 z-30 w-[50px] min-w-[50px]">
                     Total
                   </th>
-                  <th className="py-4 px-2 text-center sticky left-[330px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">
-                    Terlambat
+                  <th className="py-2.5 px-1 text-center sticky left-[264px] top-0 bg-slate-50 border-r border-slate-100 z-30 w-[56px] min-w-[56px]">
+                    Telat
                   </th>
-                  <th className="py-4 px-2 text-center sticky left-[395px] top-0 bg-slate-50 border-r border-gray-100 z-30 w-[65px]">
+                  <th className="py-2.5 px-1 text-center sticky left-[320px] top-0 bg-slate-50 border-r border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.03)] z-30 w-[56px] min-w-[56px]">
                     Lembur
                   </th>
-                  {daysInSelectedMonth.map((day) => (
-                    <th
-                      key={day}
-                      className="py-4 px-2 text-center w-[75px] text-[10px] sticky top-0 bg-slate-50/90 z-20"
-                    >
-                      {day}
-                    </th>
-                  ))}
+                  {daysInSelectedMonth.map((day) => {
+                    const isSunday = sundaySet.has(day);
+                    return (
+                      <th
+                        key={day}
+                        className={`py-2.5 px-0.5 text-center w-[44px] min-w-[44px] max-w-[44px] text-[11px] font-black sticky top-0 z-20 ${
+                          isSunday ? 'bg-red-50/90 text-red-500' : 'bg-slate-50/95 text-slate-600'
+                        }`}
+                      >
+                        {day}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
-              <tbody className="text-sm divide-y divide-gray-50 font-bold text-gray-700">
+              <tbody className="text-xs divide-y divide-gray-100/80 font-bold text-gray-700">
                 {displayedEmployees.filter((p) => p.role === 'user').length === 0 ? (
                   <tr>
                     <td colSpan={36} className="py-12 text-center text-gray-400 font-bold">
@@ -503,24 +463,26 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                         totalOvertimeMinutes,
                       } = stats;
                       return (
-                        <tr key={emp.id} className="hover:bg-gray-50/50">
+                        <tr key={emp.id} className="hover:bg-slate-50/70 transition-colors">
                           {/* Kolom Nama Pinned */}
-                          <td className="py-3 px-4 sticky left-0 bg-white z-10 border-r border-gray-100 shadow-[2px_0_5px_rgba(0,0,0,0.02)] w-[180px]">
-                            <p className="font-extrabold text-gray-900 text-xs">{emp.full_name}</p>
-                            <p className="text-[10px] text-gray-400 font-bold">NIK: {emp.nik}</p>
+                          <td className="py-2 px-3 sticky left-0 bg-white z-10 border-r border-gray-100 shadow-[1px_0_3px_rgba(0,0,0,0.02)] w-[150px] min-w-[150px] max-w-[150px]">
+                            <p className="font-extrabold text-slate-900 text-xs truncate" title={emp.full_name}>
+                              {emp.full_name}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-bold truncate">NIK: {emp.nik}</p>
                           </td>
 
                           {/* Kolom Ringkasan Kehadiran Pinned */}
-                          <td className="py-3 px-2 sticky left-[180px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-emerald-600 text-xs w-[90px]">
-                            {countInRange} Hari
+                          <td className="py-2 px-1 sticky left-[150px] bg-slate-50/90 z-10 border-r border-gray-100 text-center font-black text-emerald-600 text-xs w-[64px] min-w-[64px]">
+                            {countInRange}h
                           </td>
-                          <td className="py-3 px-2 sticky left-[270px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-orange-600 text-xs w-[60px]">
-                            {countTotal} Hari
+                          <td className="py-2 px-1 sticky left-[214px] bg-slate-50/90 z-10 border-r border-gray-100 text-center font-black text-orange-600 text-xs w-[50px] min-w-[50px]">
+                            {countTotal}h
                           </td>
-                          <td className="py-3 px-2 sticky left-[330px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-red-500 text-xs w-[65px]">
+                          <td className="py-2 px-1 sticky left-[264px] bg-slate-50/90 z-10 border-r border-gray-100 text-center font-black text-red-500 text-xs w-[56px] min-w-[56px]">
                             {formatLateMinutes(totalLateMinutes)}
                           </td>
-                          <td className="py-3 px-2 sticky left-[395px] bg-slate-50 z-10 border-r border-gray-100 text-center font-black text-purple-600 text-xs w-[65px]">
+                          <td className="py-2 px-1 sticky left-[320px] bg-slate-50/90 z-10 border-r border-gray-200 shadow-[2px_0_4px_rgba(0,0,0,0.03)] text-center font-black text-purple-600 text-xs w-[56px] min-w-[56px]">
                             {formatOvertimeMinutes(totalOvertimeMinutes)}
                           </td>
 
@@ -533,7 +495,9 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                               <td
                                 key={day}
                                 onClick={() => onEditCellClick(emp, day, log)}
-                                className="py-2.5 px-1.5 text-center align-middle w-[75px] cursor-pointer hover:bg-orange-50/50"
+                                className={`py-1.5 px-0.5 text-center align-middle w-[44px] min-w-[44px] max-w-[44px] cursor-pointer hover:bg-orange-50/60 transition-colors ${
+                                  isSunday ? 'bg-slate-50/40' : ''
+                                }`}
                                 title="Klik untuk tambah/edit absensi"
                               >
                                 {log ? (
@@ -646,11 +610,11 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                                     );
                                   })()
                                 ) : isSunday ? (
-                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 text-slate-300 text-[10px] font-bold">
+                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-slate-100/70 text-slate-300 text-[10px] font-bold">
                                     -
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-red-50 text-red-300 text-[10px] font-bold">
+                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-red-50/80 text-red-300 text-[10px] font-bold">
                                     ✕
                                   </span>
                                 )}
