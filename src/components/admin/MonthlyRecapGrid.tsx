@@ -4,15 +4,16 @@ import { formatWibTime } from '@/lib/date';
 
 interface MonthlyRecapGridProps {
   recapMonth: number;
-  setRecapMonth: (m: number) => void;
+  onMonthChange: (m: number) => void;
   recapYear: number;
-  setRecapYear: (y: number) => void;
+  onYearChange: (y: number) => void;
   recapStartDay: number;
   setRecapStartDay: (d: number) => void;
   recapEndDay: number;
   setRecapEndDay: (d: number) => void;
   onExportRecapXLSX: () => void;
   exportRecapLoading?: boolean;
+  onRefreshRecap?: () => void;
   onOpenResetRecapModal: () => void;
   searchTerm: string;
   setSearchTerm: (s: string) => void;
@@ -31,7 +32,6 @@ interface MonthlyRecapGridProps {
   formatLateMinutes: (mins: number) => string;
   formatOvertimeMinutes: (mins: number) => string;
   onEditCellClick: (emp: Profile, day: number, log?: AttendanceLog) => void;
-  startTransition: (callback: () => void) => void;
   // Modals state & handlers
   showResetRecapModal: boolean;
   setShowResetRecapModal: (v: boolean) => void;
@@ -52,15 +52,16 @@ interface MonthlyRecapGridProps {
 
 export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
   recapMonth,
-  setRecapMonth,
+  onMonthChange,
   recapYear,
-  setRecapYear,
+  onYearChange,
   recapStartDay,
   setRecapStartDay,
   recapEndDay,
   setRecapEndDay,
   onExportRecapXLSX,
   exportRecapLoading = false,
+  onRefreshRecap,
   onOpenResetRecapModal,
   searchTerm,
   setSearchTerm,
@@ -76,7 +77,6 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
   formatLateMinutes,
   formatOvertimeMinutes,
   onEditCellClick,
-  startTransition,
   showResetRecapModal,
   setShowResetRecapModal,
   resetRecapLoading,
@@ -115,15 +115,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
           <div className="flex flex-wrap gap-2 items-center">
             <select
               value={recapMonth}
-              onChange={(e) => {
-                const newMonth = Number(e.target.value);
-                startTransition(() => {
-                  setRecapMonth(newMonth);
-                  const lastDay = new Date(recapYear, newMonth + 1, 0).getDate();
-                  setRecapStartDay(1);
-                  setRecapEndDay(lastDay);
-                });
-              }}
+              onChange={(e) => onMonthChange(Number(e.target.value))}
               className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
             >
               {monthNames.map((m, idx) => (
@@ -135,15 +127,7 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
 
             <select
               value={recapYear}
-              onChange={(e) => {
-                const newYear = Number(e.target.value);
-                startTransition(() => {
-                  setRecapYear(newYear);
-                  const lastDay = new Date(newYear, recapMonth + 1, 0).getDate();
-                  setRecapStartDay(1);
-                  setRecapEndDay(lastDay);
-                });
-              }}
+              onChange={(e) => onYearChange(Number(e.target.value))}
               className="bg-gray-50 border border-gray-200 px-2.5 py-2 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer"
             >
               {[2025, 2026, 2027, 2028].map((y) => (
@@ -224,6 +208,32 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
                 </button>
               )}
             </div>
+
+            {onRefreshRecap && (
+              <button
+                type="button"
+                onClick={onRefreshRecap}
+                disabled={recapLoading}
+                className="hover-lift bg-slate-100 hover:bg-slate-200 disabled:opacity-60 text-slate-700 font-bold text-xs py-2 px-3 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"
+                title="Segarkan data rekap bulan ini"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2.5"
+                  stroke="currentColor"
+                  className={`w-3.5 h-3.5 ${recapLoading ? 'animate-spin text-orange-500' : 'text-slate-500'}`}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                  />
+                </svg>
+                <span>{recapLoading ? 'Memuat...' : 'Segarkan'}</span>
+              </button>
+            )}
 
             <button
               onClick={onExportRecapXLSX}

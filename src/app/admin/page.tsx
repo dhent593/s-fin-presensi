@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useTransition } from 'react';
+import { useEffect, useState, useMemo, useTransition, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
@@ -161,8 +161,12 @@ export default function AdminPage() {
     formatWibDate(new Date(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   );
 
+  // Request counter to avoid race conditions when switching months/years rapidly
+  const recapRequestIdRef = useRef(0);
+
   // ── Hoisted Data Loaders ──────────────────────────────────────────────────
   const loadMonthlyRecap = async (month: number, year: number) => {
+    const reqId = ++recapRequestIdRef.current;
     setRecapLoading(true);
     try {
       const { start, end } = getMonthRangeWib(year, month);
@@ -182,6 +186,7 @@ export default function AdminPage() {
           .range(from, from + step - 1);
 
         if (error) throw error;
+        if (recapRequestIdRef.current !== reqId) return;
         
         if (data && data.length > 0) {
           allData = [...allData, ...(data as unknown as AttendanceLog[])];
@@ -195,13 +200,17 @@ export default function AdminPage() {
         }
       }
       
-      startTransition(() => {
-        setRecapLogs(allData);
-        setRecapLoading(false);
-      });
+      if (recapRequestIdRef.current === reqId) {
+        startTransition(() => {
+          setRecapLogs(allData);
+          setRecapLoading(false);
+        });
+      }
     } catch (err: unknown) {
-      console.error('Error loading monthly recap:', err);
-      setRecapLoading(false);
+      if (recapRequestIdRef.current === reqId) {
+        console.error('Error loading monthly recap:', err);
+        setRecapLoading(false);
+      }
     }
   };
 
@@ -1199,6 +1208,27 @@ export default function AdminPage() {
     return s;
   }, [daysInSelectedMonth, recapYear, recapMonth]);
 
+  // Handlers for month/year changes with automatic re-fetch
+  const handleRecapMonthChange = (newMonth: number) => {
+    startTransition(() => {
+      setRecapMonth(newMonth);
+      const lastDay = new Date(recapYear, newMonth + 1, 0).getDate();
+      setRecapStartDay(1);
+      setRecapEndDay(lastDay);
+    });
+    loadMonthlyRecap(newMonth, recapYear);
+  };
+
+  const handleRecapYearChange = (newYear: number) => {
+    startTransition(() => {
+      setRecapYear(newYear);
+      const lastDay = new Date(newYear, recapMonth + 1, 0).getDate();
+      setRecapStartDay(1);
+      setRecapEndDay(lastDay);
+    });
+    loadMonthlyRecap(recapMonth, newYear);
+  };
+
   // Export Monthly Recap Grid to XLSX file (optimized O(1) non-blocking)
   const handleExportRecapXLSX = () => {
     const activeEmployees = processedEmployees.filter(p => p.role === 'user');
@@ -1514,6 +1544,7 @@ export default function AdminPage() {
             startTransition(() => {
               setActiveTab('recap');
             });
+            loadMonthlyRecap(recapMonth, recapYear);
           } else {
             setActiveTab(tab);
           }
@@ -1606,13 +1637,14 @@ export default function AdminPage() {
         {activeTab === 'recap' && (
           <MonthlyRecapGrid
             recapMonth={recapMonth}
-            setRecapMonth={setRecapMonth}
+            onMonthChange={handleRecapMonthChange}
             recapYear={recapYear}
-            setRecapYear={setRecapYear}
+            onYearChange={handleRecapYearChange}
             recapStartDay={recapStartDay}
             setRecapStartDay={setRecapStartDay}
             recapEndDay={recapEndDay}
             setRecapEndDay={setRecapEndDay}
+            onRefreshRecap={() => loadMonthlyRecap(recapMonth, recapYear)}
             onExportRecapXLSX={handleExportRecapXLSX}
             exportRecapLoading={exportRecapLoading}
             onOpenResetRecapModal={() => setShowResetRecapModal(true)}
@@ -1630,7 +1662,6 @@ export default function AdminPage() {
             formatLateMinutes={formatLateMinutes}
             formatOvertimeMinutes={formatOvertimeMinutes}
             onEditCellClick={handleEditCellClick}
-            startTransition={startTransition}
             showResetRecapModal={showResetRecapModal}
             setShowResetRecapModal={setShowResetRecapModal}
             resetRecapLoading={resetRecapLoading}
