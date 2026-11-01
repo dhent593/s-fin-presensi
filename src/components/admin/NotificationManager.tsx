@@ -38,15 +38,15 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
   onDeleteNotification,
 }) => {
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <h3 className="text-sm font-black text-gray-800 mb-4 uppercase tracking-widest">
+    <div className="p-3.5 md:p-5 max-w-6xl w-full space-y-3.5 md:space-y-4 flex-1 animate-fade-in">
+      <div className="bg-white rounded-2xl p-3.5 md:p-4 shadow-sm border border-gray-100">
+        <h3 className="text-xs md:text-sm font-black text-gray-800 mb-3 uppercase tracking-wider">
           Buat Notifikasi Baru
         </h3>
 
         {notifFeedback && (
           <div
-            className={`p-4 rounded-xl mb-4 text-sm font-bold ${
+            className={`p-3 rounded-xl mb-3 text-xs md:text-sm font-bold ${
               notifFeedback.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
             }`}
           >
@@ -54,27 +54,27 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
           </div>
         )}
 
-        <form onSubmit={onSaveNotification} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form onSubmit={onSaveNotification} className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Judul</label>
+              <label className="block text-[10px] md:text-xs font-bold text-gray-500 mb-1 uppercase">Judul</label>
               <input
                 type="text"
                 value={newNotifTitle}
                 onChange={(e) => setNewNotifTitle(e.target.value)}
                 required
-                className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500"
+                className="w-full bg-slate-50 border-0 rounded-xl px-3 py-2 text-xs md:text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500"
                 placeholder="Misal: Info Libur Lebaran"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Tipe</label>
+              <label className="block text-[10px] md:text-xs font-bold text-gray-500 mb-1 uppercase">Tipe</label>
               <select
                 value={newNotifType}
                 onChange={(e) =>
                   setNewNotifType(e.target.value as 'info' | 'warning' | 'success')
                 }
-                className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500"
+                className="w-full bg-slate-50 border-0 rounded-xl px-3 py-2 text-xs md:text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500"
               >
                 <option value="info">Info (Biru)</option>
                 <option value="warning">Peringatan (Kuning)</option>
@@ -83,26 +83,26 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">
+            <label className="block text-[10px] md:text-xs font-bold text-gray-500 mb-1 uppercase">
               Isi Pesan
             </label>
             <textarea
               value={newNotifMessage}
               onChange={(e) => setNewNotifMessage(e.target.value)}
               required
-              rows={3}
-              className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500"
+              rows={2}
+              className="w-full bg-slate-50 border-0 rounded-xl px-3 py-2 text-xs md:text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500"
               placeholder="Ketik isi pengumuman..."
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">
+            <label className="block text-[10px] md:text-xs font-bold text-gray-500 mb-1 uppercase">
               Target Penerima (Kosongkan jika Broadcast)
             </label>
             <select
               value={newNotifTarget}
               onChange={(e) => setNewNotifTarget(e.target.value)}
-              className="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500"
+              className="w-full bg-slate-50 border-0 rounded-xl px-3 py-2 text-xs md:text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500"
             >
               <option value="">-- Semua Karyawan (Broadcast) --</option>
               {employees.map((emp) => (
@@ -112,11 +112,11 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
               ))}
             </select>
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end pt-1">
             <button
               type="submit"
               disabled={!newNotifTitle || !newNotifMessage}
-              className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl transition duration-200 shadow-lg shadow-orange-500/30 disabled:opacity-50 cursor-pointer"
+              className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 px-5 text-xs md:text-sm rounded-xl transition duration-200 shadow-md shadow-orange-500/20 disabled:opacity-50 cursor-pointer"
             >
               Kirim Notifikasi
             </button>
@@ -124,9 +124,9 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
         </form>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">
+      <div className="bg-white rounded-2xl p-3.5 md:p-4 shadow-sm border border-gray-100">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-wider">
             Daftar Notifikasi Aktif
           </h3>
           <button

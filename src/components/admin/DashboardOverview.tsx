@@ -42,28 +42,28 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onNavigateToGeofence,
 }) => {
   return (
-    <div className="p-4 md:p-8 space-y-5 md:space-y-8 flex-1 animate-fade-in">
+    <div className="p-3.5 md:p-5 space-y-3.5 md:space-y-4 flex-1 animate-fade-in">
       {/* BARIS STATISTIK */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {/* Total Karyawan */}
-        <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
+        <div className="hover-lift bg-white p-3 md:p-3.5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
           <div>
             <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">
               Total Karyawan
             </p>
-            <p className="text-2xl md:text-3xl font-black mt-1 text-gray-900">
+            <p className="text-xl md:text-2xl font-black mt-0.5 text-gray-900">
               {stats.totalEmployees}{' '}
               <span className="text-xs font-medium text-gray-400">Orang</span>
             </p>
           </div>
-          <div className="p-2 md:p-3 bg-blue-50 text-blue-600 rounded-xl">
+          <div className="p-2 md:p-2.5 bg-blue-50 text-blue-600 rounded-xl">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth="2.5"
               stroke="currentColor"
-              className="w-5 h-5 md:w-6 md:h-6"
+              className="w-5 h-5"
             >
               <path
                 strokeLinecap="round"
@@ -75,23 +75,23 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Hadir */}
-        <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
+        <div className="hover-lift bg-white p-3 md:p-3.5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
           <div>
             <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">
               Sudah Absen
             </p>
-            <p className="text-2xl md:text-3xl font-black mt-1 text-emerald-600">
+            <p className="text-xl md:text-2xl font-black mt-0.5 text-emerald-600">
               {stats.checkedIn} <span className="text-xs font-medium text-gray-400">Orang</span>
             </p>
           </div>
-          <div className="p-2 md:p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+          <div className="p-2 md:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth="2.5"
               stroke="currentColor"
-              className="w-5 h-5 md:w-6 md:h-6"
+              className="w-5 h-5"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -99,23 +99,23 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Terlambat */}
-        <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
+        <div className="hover-lift bg-white p-3 md:p-3.5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
           <div>
             <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">
               Terlambat
             </p>
-            <p className="text-2xl md:text-3xl font-black mt-1 text-amber-500">
+            <p className="text-xl md:text-2xl font-black mt-0.5 text-amber-500">
               {stats.late} <span className="text-xs font-medium text-gray-400">Orang</span>
             </p>
           </div>
-          <div className="p-2 md:p-3 bg-amber-50 text-amber-500 rounded-xl">
+          <div className="p-2 md:p-2.5 bg-amber-50 text-amber-500 rounded-xl">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth="2.5"
               stroke="currentColor"
-              className="w-5 h-5 md:w-6 md:h-6"
+              className="w-5 h-5"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -123,23 +123,23 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Belum Hadir */}
-        <div className="hover-lift bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
+        <div className="hover-lift bg-white p-3 md:p-3.5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
           <div>
             <p className="text-[10px] md:text-xs font-extrabold text-gray-400 uppercase">
               Belum Absen
             </p>
-            <p className="text-2xl md:text-3xl font-black mt-1 text-red-500">
+            <p className="text-xl md:text-2xl font-black mt-0.5 text-red-500">
               {stats.absent} <span className="text-xs font-medium text-gray-400">Orang</span>
             </p>
           </div>
-          <div className="p-2 md:p-3 bg-red-50 text-red-500 rounded-xl">
+          <div className="p-2 md:p-2.5 bg-red-50 text-red-500 rounded-xl">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth="2.5"
               stroke="currentColor"
-              className="w-5 h-5 md:w-6 md:h-6"
+              className="w-5 h-5"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -148,13 +148,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       </div>
 
       {/* GRAFIK ANALITIK */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 md:gap-4">
         {/* Tren Kehadiran Mingguan (Line Chart) */}
-        <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2 hover:shadow-md transition duration-300">
-          <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">
+        <div className="bg-white p-3.5 md:p-4 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2 hover:shadow-md transition duration-300">
+          <h3 className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-wider mb-2 md:mb-3">
             Tren Kehadiran (7 Hari)
           </h3>
-          <div className="h-64 w-full">
+          <div className="h-44 md:h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={weeklyStats} margin={{ top: 5, right: 20, bottom: 5, left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -194,11 +194,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Komposisi Hari Ini (Pie Chart) */}
-        <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition duration-300">
-          <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">
+        <div className="bg-white p-3.5 md:p-4 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition duration-300">
+          <h3 className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-wider mb-2 md:mb-3">
             Status Hari Ini
           </h3>
-          <div className="h-64 w-full">
+          <div className="h-44 md:h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -209,9 +209,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   ].filter((d) => d.value > 0)}
                   cx="50%"
                   cy="50%"
-                  innerRadius={55}
-                  outerRadius={80}
-                  paddingAngle={5}
+                  innerRadius={40}
+                  outerRadius={62}
+                  paddingAngle={4}
                   dataKey="value"
                 >
                   {[
@@ -245,7 +245,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 />
                 <Legend
                   iconType="circle"
-                  wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingTop: '10px' }}
+                  wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingTop: '4px' }}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -254,14 +254,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       </div>
 
       {/* LAYOUT DUA KOLOM */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 md:gap-4">
         {/* Kiri: Tabel Presensi Hari Ini */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 lg:col-span-2">
-          <div className="flex justify-between items-center mb-4 md:mb-6">
-            <h3 className="text-sm md:text-lg font-bold text-gray-800">Aktivitas Presensi Hari Ini</h3>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3.5 md:p-4 lg:col-span-2">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-sm md:text-base font-bold text-gray-800">Aktivitas Presensi Hari Ini</h3>
             <button
               onClick={onExportCSV}
-              className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 md:px-4 py-2 md:py-2.5 rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+              className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 py-1.5 md:py-2 rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -281,15 +281,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </button>
           </div>
 
-          <div className="overflow-x-auto max-h-[400px] md:max-h-[500px] overflow-y-auto border border-slate-100/80 rounded-2xl shadow-inner bg-slate-50/20">
+          <div className="overflow-x-auto max-h-[220px] md:max-h-[260px] overflow-y-auto border border-slate-100/80 rounded-xl shadow-inner bg-slate-50/20">
             <table className="w-full text-left border-collapse min-w-[400px]">
               <thead className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-md shadow-[0_1px_0_rgba(241,245,249,1)]">
                 <tr className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                  <th className="py-3 px-3 md:px-4 rounded-l-xl">Nama / NIK</th>
-                  <th className="py-3 px-3 md:px-4">Masuk</th>
-                  <th className="py-3 px-3 md:px-4">Pulang</th>
-                  <th className="py-3 px-3 md:px-4">Lembur</th>
-                  <th className="py-3 px-3 md:px-4 rounded-r-xl">Status</th>
+                  <th className="py-2.5 px-3 md:px-4 rounded-l-xl">Nama / NIK</th>
+                  <th className="py-2.5 px-3 md:px-4">Masuk</th>
+                  <th className="py-2.5 px-3 md:px-4">Pulang</th>
+                  <th className="py-2.5 px-3 md:px-4">Lembur</th>
+                  <th className="py-2.5 px-3 md:px-4 rounded-r-xl">Status</th>
                 </tr>
               </thead>
               <tbody className="text-xs md:text-sm divide-y divide-gray-50 font-bold text-gray-700">
@@ -315,7 +315,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
                     return (
                       <tr key={log.id} className="hover:bg-gray-50/50 transition">
-                        <td className="py-3 px-3 md:px-4">
+                        <td className="py-2 md:py-2.5 px-3 md:px-4">
                           <p className="font-extrabold text-gray-900 text-xs md:text-sm">
                             {log.profiles?.full_name || 'Karyawan'}
                           </p>
@@ -323,9 +323,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             NIK: {log.profiles?.nik || '-'}
                           </p>
                         </td>
-                        <td className="py-3 px-3 md:px-4 text-gray-600">{timeIn}</td>
-                        <td className="py-3 px-3 md:px-4 text-gray-600">{timeOut}</td>
-                        <td className="py-3 px-3 md:px-4">
+                        <td className="py-2 md:py-2.5 px-3 md:px-4 text-gray-600">{timeIn}</td>
+                        <td className="py-2 md:py-2.5 px-3 md:px-4 text-gray-600">{timeOut}</td>
+                        <td className="py-2 md:py-2.5 px-3 md:px-4">
                           {overtimeMins > 0 ? (
                             <span className="inline-flex items-center gap-1 text-[10px] md:text-xs px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-100 font-bold">
                               <svg
@@ -348,7 +348,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             <span className="text-gray-300 text-xs font-bold">—</span>
                           )}
                         </td>
-                        <td className="py-3 px-3 md:px-4">
+                        <td className="py-2 md:py-2.5 px-3 md:px-4">
                           <span
                             className={`inline-flex text-[10px] md:text-xs px-2 py-0.5 rounded-full border ${badgeClass}`}
                           >
@@ -369,31 +369,31 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Kanan: Ringkasan Pengaturan Geofence Cepat */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between h-fit space-y-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3.5 md:p-4 flex flex-col justify-between h-fit space-y-3.5">
           <div>
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Titik Pabrik Aktif</h3>
-            <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+            <h3 className="text-sm md:text-base font-bold text-gray-800 mb-1">Titik Pabrik Aktif</h3>
+            <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
               Koordinat yang digunakan oleh HP karyawan untuk validasi geofencing.
             </p>
 
-            <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <div className="space-y-2 bg-gray-50 p-3 rounded-xl border border-gray-100">
               <div>
-                <p className="text-[10px] uppercase font-bold text-gray-400">
+                <p className="text-[9px] uppercase font-bold text-gray-400">
                   Garis Lintang (Latitude)
                 </p>
-                <p className="text-sm font-extrabold text-gray-800">{geofence.factory_lat}</p>
+                <p className="text-xs md:text-sm font-extrabold text-gray-800">{geofence.factory_lat}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase font-bold text-gray-400">
+                <p className="text-[9px] uppercase font-bold text-gray-400">
                   Garis Bujur (Longitude)
                 </p>
-                <p className="text-sm font-extrabold text-gray-800">{geofence.factory_lon}</p>
+                <p className="text-xs md:text-sm font-extrabold text-gray-800">{geofence.factory_lon}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase font-bold text-gray-400">
+                <p className="text-[9px] uppercase font-bold text-gray-400">
                   Jarak Radius Maksimal
                 </p>
-                <p className="text-sm font-extrabold text-orange-600">
+                <p className="text-xs md:text-sm font-extrabold text-orange-600">
                   {geofence.radius_meters} Meter
                 </p>
               </div>
@@ -401,7 +401,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
           <button
             onClick={onNavigateToGeofence}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3.5 rounded-xl transition shadow-md active:scale-95 cursor-pointer"
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 rounded-xl transition shadow-md active:scale-95 cursor-pointer"
           >
             Ubah Koordinat Area
           </button>

@@ -52,10 +52,10 @@ export const PayslipManager: React.FC<PayslipManagerProps> = ({
   ];
 
   return (
-    <div className="p-4 md:p-8 space-y-6 flex-1 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-1">Upload Slip Gaji Karyawan</h3>
-        <p className="text-xs text-gray-400 mb-5 leading-relaxed">
+    <div className="p-3.5 md:p-5 max-w-6xl w-full space-y-3.5 md:space-y-4 flex-1 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3.5 md:p-4">
+        <h3 className="text-sm md:text-base font-bold text-gray-800 mb-1">Upload Slip Gaji Karyawan</h3>
+        <p className="text-xs text-gray-400 mb-3 leading-relaxed">
           Upload file Excel laporan gaji. Sistem akan otomatis mencocokkan NIK karyawan dan menyimpan
           slip gaji masing-masing.
         </p>

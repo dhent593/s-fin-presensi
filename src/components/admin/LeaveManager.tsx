@@ -20,14 +20,14 @@ export const LeaveManager: React.FC<LeaveManagerProps> = ({
   onDeleteLeave,
 }) => {
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center mb-6">
+    <div className="p-3.5 md:p-5 max-w-6xl w-full space-y-3.5 md:space-y-4 flex-1 animate-fade-in">
+      <div className="bg-white rounded-2xl p-3.5 md:p-4 shadow-sm border border-gray-100">
+        <div className="flex justify-between items-center mb-4">
           <div>
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">
+            <h3 className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-wider">
               Daftar Pengajuan
             </h3>
-            <p className="text-xs text-slate-500 font-medium mt-1">
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
               Kelola permohonan cuti, sakit, dan izin karyawan.
             </p>
           </div>

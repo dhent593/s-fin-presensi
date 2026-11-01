@@ -129,14 +129,6 @@ export const MonthlyRecapGrid: React.FC<MonthlyRecapGridProps> = ({
         <div className="p-2 sm:px-3.5 sm:py-2.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-white shrink-0">
           {/* SISI KIRI: Periode, Rentang Tanggal & Pencarian */}
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            {/* Judul Kompak */}
-            <div className="hidden xl:flex items-center gap-1.5 mr-1">
-              <span className="w-2 h-2 rounded-full bg-orange-500" />
-              <h3 className="text-xs font-black text-slate-800 tracking-tight whitespace-nowrap">
-                Rekap Bulanan
-              </h3>
-            </div>
-
             {/* Dropdown Bulan & Tahun */}
             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1">
               <select

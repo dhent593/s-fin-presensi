@@ -68,16 +68,16 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
   onCancelEdit,
 }) => {
   return (
-    <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-8 flex-1 animate-fade-in">
+    <div className="p-3.5 md:p-5 grid grid-cols-1 lg:grid-cols-3 gap-3.5 md:gap-4 flex-1 animate-fade-in">
       {/* Kiri: Daftar Karyawan Terdaftar */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 lg:col-span-2">
-        <div className="flex flex-wrap justify-between items-center gap-3 mb-4 md:mb-6">
-          <h3 className="text-sm md:text-lg font-bold text-gray-800">Daftar Karyawan Terdaftar</h3>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3.5 md:p-4 lg:col-span-2 flex flex-col">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+          <h3 className="text-sm md:text-base font-bold text-gray-800">Daftar Karyawan Terdaftar</h3>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={onShowResetModal}
-              className="hover-lift border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs py-2 px-3 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"
+              className="hover-lift border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs py-1.5 px-2.5 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -170,9 +170,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
         )}
 
         {/* FILTER DAN SEARCH BAR */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 bg-slate-50/60 p-4 rounded-2xl border border-slate-100">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3 bg-slate-50/60 p-2.5 rounded-xl border border-slate-100">
           <div className="sm:col-span-2">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">
               Cari Karyawan (Nama / NIK)
             </label>
             <div className="relative flex items-center">
@@ -181,13 +181,13 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                 placeholder="Masukkan nama atau NIK..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-white border border-gray-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 shadow-sm transition-all"
+                className="w-full bg-white border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-bold focus:outline-none focus:border-orange-500 shadow-sm transition-all"
               />
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-3.5 text-slate-400 hover:text-slate-600 font-extrabold text-xs cursor-pointer focus:outline-none"
+                  className="absolute right-3 text-slate-400 hover:text-slate-600 font-extrabold text-xs cursor-pointer focus:outline-none"
                 >
                   Batal
                 </button>
@@ -195,13 +195,13 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">
               Urutan Data Karyawan
             </label>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as 'newest' | 'excel' | 'name' | 'nik')}
-              className="w-full bg-white border border-gray-200 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer shadow-sm"
+              className="w-full bg-white border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-bold focus:outline-none focus:border-orange-500 cursor-pointer shadow-sm"
             >
               <option value="newest">Paling Baru Didaftarkan</option>
               <option value="excel">Sesuai Urutan File Excel</option>
@@ -211,16 +211,16 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto max-h-[550px] overflow-y-auto border border-slate-100/80 rounded-2xl shadow-inner bg-slate-50/20">
+        <div className="overflow-x-auto max-h-[calc(100vh-270px)] min-h-[300px] overflow-y-auto border border-slate-100/80 rounded-xl shadow-inner bg-slate-50/20">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-md shadow-[0_1px_0_rgba(241,245,249,1)]">
               <tr className="text-xs font-bold text-gray-400 uppercase">
-                <th className="py-3 px-4 rounded-l-xl">Nama Karyawan</th>
-                <th className="py-3 px-4">NIK</th>
-                <th className="py-3 px-4">Role / Jabatan</th>
-                <th className="py-3 px-4">PIN Passcode</th>
-                <th className="py-3 px-4">Tgl Daftar</th>
-                <th className="py-3 px-4 rounded-r-xl text-center">Aksi</th>
+                <th className="py-2.5 px-3 md:px-4 rounded-l-xl">Nama Karyawan</th>
+                <th className="py-2.5 px-3 md:px-4">NIK</th>
+                <th className="py-2.5 px-3 md:px-4">Role / Jabatan</th>
+                <th className="py-2.5 px-3 md:px-4">PIN Passcode</th>
+                <th className="py-2.5 px-3 md:px-4">Tgl Daftar</th>
+                <th className="py-2.5 px-3 md:px-4 rounded-r-xl text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-50 font-bold text-gray-700">
@@ -239,11 +239,11 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   });
                   return (
                     <tr key={emp.id} className="hover:bg-gray-50/50 transition">
-                      <td className="py-3.5 px-4 text-gray-900 font-extrabold">{emp.full_name}</td>
-                      <td className="py-3.5 px-4 text-gray-600">{emp.nik}</td>
-                      <td className="py-3.5 px-4">
+                      <td className="py-2 md:py-2.5 px-3 md:px-4 text-gray-900 font-extrabold text-xs md:text-sm">{emp.full_name}</td>
+                      <td className="py-2 md:py-2.5 px-3 md:px-4 text-gray-600 text-xs">{emp.nik}</td>
+                      <td className="py-2 md:py-2.5 px-3 md:px-4">
                         <span
-                          className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                          className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold ${
                             emp.role === 'admin'
                               ? 'bg-orange-50 text-orange-600 border border-orange-100'
                               : 'bg-slate-50 text-slate-600 border border-slate-100'
@@ -252,8 +252,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                           {emp.role === 'admin' ? 'Admin' : 'Karyawan'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-xs">
-                        <div className="flex items-center gap-2">
+                      <td className="py-2 md:py-2.5 px-3 md:px-4 font-mono text-xs">
+                        <div className="flex items-center gap-1.5">
                           <span>
                             {visiblePasscodes[emp.id] ? emp.passcode || '123456' : '••••••'}
                           </span>
@@ -362,13 +362,13 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
       {/* Kanan: Form Registrasi / Edit Karyawan */}
       <div
-        className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 h-fit animate-fade-in"
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3.5 md:p-4 h-fit animate-fade-in"
         key={editingEmployee ? 'edit' : 'register'}
       >
-        <h3 className="text-sm md:text-lg font-bold text-gray-800 mb-1 md:mb-2">
+        <h3 className="text-sm md:text-base font-bold text-gray-800 mb-1">
           {editingEmployee ? 'Edit Karyawan' : 'Daftarkan Karyawan Baru'}
         </h3>
-        <p className="text-xs text-gray-400 mb-6 leading-relaxed">
+        <p className="text-xs text-gray-400 mb-4 leading-relaxed">
           {editingEmployee
             ? 'Ubah rincian profil, jabatan, atau passcode pin untuk karyawan ini.'
             : 'Buat akun login presensi bagi karyawan baru. Gunakan NIK yang valid dan passcode angka.'}
@@ -376,7 +376,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
         {regFeedback && (
           <div
-            className={`p-4 rounded-xl mb-5 text-xs font-bold border ${
+            className={`p-3 rounded-xl mb-3 text-xs font-bold border ${
               regFeedback.success
                 ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                 : 'bg-red-50 text-red-600 border-red-100'
@@ -386,9 +386,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
           </div>
         )}
 
-        <form onSubmit={onSaveEmployee} className="space-y-4">
+        <form onSubmit={onSaveEmployee} className="space-y-3">
           <div>
-            <label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">
+            <label className="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">
               Nomor NIK
             </label>
             <input
@@ -397,11 +397,11 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
               placeholder="Contoh: 20260199"
               value={newNik}
               onChange={(e) => setNewNik(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
+              className="w-full bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs md:text-sm font-bold focus:outline-none focus:border-orange-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">
+            <label className="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">
               Nama Lengkap
             </label>
             <input
@@ -410,11 +410,11 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
               placeholder="Nama lengkap karyawan"
               value={newFullName}
               onChange={(e) => setNewFullName(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
+              className="w-full bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs md:text-sm font-bold focus:outline-none focus:border-orange-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">
+            <label className="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">
               PIN Passcode (6 Angka)
             </label>
             <input
@@ -425,17 +425,17 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
               placeholder="Contoh: 123456"
               value={newPasscode}
               onChange={(e) => setNewPasscode(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold text-center tracking-widest focus:outline-none focus:border-orange-500"
+              className="w-full bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs md:text-sm font-bold text-center tracking-widest focus:outline-none focus:border-orange-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-extrabold text-gray-400 uppercase mb-1">
+            <label className="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">
               Role Jabatan
             </label>
             <select
               value={newRole}
               onChange={(e) => setNewRole(e.target.value as 'user' | 'admin')}
-              className="w-full bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500"
+              className="w-full bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs md:text-sm font-bold focus:outline-none focus:border-orange-500"
             >
               <option value="user">Karyawan Biasa</option>
               <option value="admin">Administrator Panel</option>
@@ -444,7 +444,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
           <button
             type="submit"
             disabled={regLoading}
-            className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-sm py-3 rounded-xl transition shadow-md active:scale-95 cursor-pointer"
+            className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-xs md:text-sm py-2.5 rounded-xl transition shadow-md active:scale-95 cursor-pointer"
           >
             {regLoading
               ? editingEmployee
@@ -458,7 +458,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
             <button
               type="button"
               onClick={onCancelEdit}
-              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-xl transition active:scale-95 cursor-pointer"
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2 rounded-xl transition active:scale-95 cursor-pointer"
             >
               Batal Edit
             </button>
