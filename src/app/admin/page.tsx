@@ -17,6 +17,7 @@ import {
   formatWibDate,
   getMonthRangeWib,
   getTodayRangeWib,
+  getLast7DaysWib,
   INDONESIAN_MONTHS,
 } from '@/lib/date';
 
@@ -305,41 +306,39 @@ export default function AdminPage() {
       });
 
       // 4b. Fetch 7 days history for Weekly Chart (WIB)
-      const nowWib = getWibDate();
-      const sevenDaysAgo = getWibDate();
-      sevenDaysAgo.setDate(nowWib.getDate() - 6);
-      const sevenY = sevenDaysAgo.getFullYear();
-      const sevenM = String(sevenDaysAgo.getMonth() + 1).padStart(2, '0');
-      const sevenD = String(sevenDaysAgo.getDate()).padStart(2, '0');
-      const sevenStartIso = `${sevenY}-${sevenM}-${sevenD}T00:00:00+07:00`;
+      const { startIso: sevenStartIso, endIso: sevenEndIso, days: sevenDays } = getLast7DaysWib();
 
       const { data: weekData } = await supabase
         .from('attendance_logs')
-        .select('check_in')
+        .select('check_in, user_id')
         .gte('check_in', sevenStartIso)
-        .lte('check_in', end);
+        .lte('check_in', sevenEndIso);
+
+      const dayUserSets: Record<string, Set<string>> = {};
+      sevenDays.forEach(d => {
+        dayUserSets[d.key] = new Set();
+      });
 
       if (weekData) {
-        const dayCounts: Record<string, number> = {};
-        for (let i = 0; i < 7; i++) {
-          const d = getWibDate();
-          d.setDate(sevenDaysAgo.getDate() + i);
-          dayCounts[formatWibDate(d, { month: 'short', day: 'numeric' })] = 0;
-        }
-
         weekData.forEach(log => {
-          const d = formatWibDate(log.check_in, { month: 'short', day: 'numeric' });
-          if (dayCounts[d] !== undefined) {
-            dayCounts[d]++;
+          if (!log.check_in) return;
+          const logWib = getWibDate(log.check_in);
+          const y = logWib.getFullYear();
+          const m = String(logWib.getMonth() + 1).padStart(2, '0');
+          const d = String(logWib.getDate()).padStart(2, '0');
+          const dateKey = `${y}-${m}-${d}`;
+
+          if (dayUserSets[dateKey] && log.user_id) {
+            dayUserSets[dateKey].add(log.user_id);
           }
         });
-
-        const weeklyChartData = Object.keys(dayCounts).map(date => ({
-          date,
-          hadir: dayCounts[date]
-        }));
-        setWeeklyStats(weeklyChartData);
       }
+
+      const weeklyChartData = sevenDays.map(d => ({
+        date: d.label,
+        hadir: dayUserSets[d.key] ? dayUserSets[d.key].size : 0,
+      }));
+      setWeeklyStats(weeklyChartData);
 
       // Fetch recap too
       loadMonthlyRecap(recapMonth, recapYear);

@@ -113,3 +113,45 @@ export const INDONESIAN_MONTHS = [
   'Desember',
 ] as const;
 
+export interface Last7DaysDay {
+  key: string;   // 'YYYY-MM-DD'
+  label: string; // '28 Okt'
+  day: number;
+  month: number;
+  year: number;
+}
+
+/**
+ * Generates the exact 7 calendar days ending today in WIB timezone,
+ * returning ISO boundary strings and an ordered array of daily buckets.
+ */
+export function getLast7DaysWib(): {
+  startIso: string;
+  endIso: string;
+  days: Last7DaysDay[];
+} {
+  const nowWib = getWibDate();
+  const days: Last7DaysDay[] = [];
+
+  for (let i = 6; i >= 0; i--) {
+    const d = getWibDate();
+    d.setDate(nowWib.getDate() - i);
+
+    const year = d.getFullYear();
+    const month = d.getMonth();
+    const day = d.getDate();
+    const mStr = String(month + 1).padStart(2, '0');
+    const dStr = String(day).padStart(2, '0');
+    const key = `${year}-${mStr}-${dStr}`;
+    const label = formatWibDate(d, { day: 'numeric', month: 'short' });
+
+    days.push({ key, label, day, month, year });
+  }
+
+  const startIso = `${days[0].key}T00:00:00+07:00`;
+  const endIso = `${days[days.length - 1].key}T23:59:59.999+07:00`;
+
+  return { startIso, endIso, days };
+}
+
+
